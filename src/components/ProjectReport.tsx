@@ -1,0 +1,245 @@
+import { Project, ProjectEvidence } from '../types';
+import { X, Printer, Download } from 'lucide-react';
+import { Timestamp } from 'firebase/firestore';
+
+interface ProjectReportProps {
+  project: Project;
+  onClose: () => void;
+}
+
+export default function ProjectReport({ project, onClose }: ProjectReportProps) {
+  const formatDate = (ts?: Timestamp) => {
+    if (!ts) return '-';
+    const date = ts.toDate();
+    return date.toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    }) + ' ' + date.toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const getEvidenceByStage = (stage: ProjectEvidence['stage']) => {
+    const evidence = project.evidence?.filter(e => e.stage === stage) || [];
+    if (stage === 'Initial' && project.photos) {
+      const legacyPhotos = project.photos.map(url => ({
+        photoUrl: url,
+        stage: 'Initial' as any,
+        reportedBy: 'System',
+        timestamp: project.createdAt,
+        caption: 'Legacy Photo'
+      }));
+      return [...legacyPhotos, ...evidence];
+    }
+    return evidence;
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-white overflow-y-auto print:p-0">
+      {/* Header - Hidden in Print */}
+      <div className="sticky top-0 z-10 bg-white border-b border-neutral-200 p-4 flex items-center justify-between print:hidden">
+        <div className="flex items-center gap-4">
+          <button onClick={onClose} className="p-2 hover:bg-neutral-100 rounded-full transition-colors">
+            <X className="w-6 h-6" />
+          </button>
+          <h2 className="text-xl font-bold text-neutral-900">Project Report: {project.pid}</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={handlePrint}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+          >
+            <Printer className="w-4 h-4" />
+            Print Report
+          </button>
+        </div>
+      </div>
+
+      {/* Report Content */}
+      <div className="max-w-[210mm] mx-auto p-[10mm] sm:p-[20mm] bg-white shadow-lg my-8 print:my-0 print:shadow-none print:max-w-none">
+        {/* PDF Header Section */}
+        <div className="flex justify-between items-start mb-8">
+          <div className="flex items-center gap-2">
+            <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center text-white font-bold text-xl">TA</div>
+            <div>
+              <h1 className="text-xl font-bold text-neutral-900 leading-tight">TelkomAkses</h1>
+              <p className="text-[10px] text-neutral-500 uppercase">Telkom Indonesia</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <h1 className="text-xl font-bold text-neutral-900 leading-tight">Telkom Indonesia</h1>
+            <div className="flex justify-end mt-1">
+               <div className="w-8 h-8 bg-red-600 rounded-full"></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Project Details */}
+        <div className="grid grid-cols-[150px_1fr] gap-y-2 text-sm mb-8">
+          <div className="font-bold uppercase">PROYEK</div>
+          <div>: {project.projectName || project.description}</div>
+          
+          <div className="font-bold uppercase">NO. KONTRAK</div>
+          <div>: {project.contractNo || '-'}</div>
+          
+          <div className="font-bold uppercase">NO. SURAT PESANAN</div>
+          <div>: {project.orderNo || '-'}</div>
+          
+          <div className="font-bold uppercase">WITEL</div>
+          <div>: {project.witel || 'MADIUN'}</div>
+          
+          <div className="font-bold uppercase">TIKET / LOKASI</div>
+          <div>: {project.ticketId} - {project.location}</div>
+          
+          <div className="font-bold uppercase">PELAKSANA</div>
+          <div>: {project.partner || 'PT TELKOM AKSES'}</div>
+        </div>
+
+        <hr className="border-black border-t-2 mb-8" />
+
+        {/* Evidence Sections - Each on new page in print if needed */}
+        <div className="space-y-12">
+          {['Initial', 'Penggalian', 'Tanam tiang', 'Pengecoran', 'Penarikan kabel', 'Pemasangan aksesoris', 'Penyambungan core', 'Pemasangan UC', 'Penaikan UC', 'Berita acara'].map((stage) => {
+            const stagePhotos = getEvidenceByStage(stage as any);
+            if (stagePhotos.length === 0) return null;
+
+            return (
+              <section key={stage} className="page-break-before">
+                <div className="bg-neutral-100 border border-black p-2 text-center font-bold uppercase mb-4">
+                  {stage === 'Initial' ? 'SEBELUM' : stage === 'Penaikan UC' ? 'SESUDAH' : stage}
+                </div>
+                <div className="grid grid-cols-2 gap-6">
+                  {stagePhotos.map((item, idx) => (
+                    <div key={idx} className="space-y-2 border border-black/10 p-2 rounded bg-neutral-50/30">
+                      <div className="aspect-[4/3] border border-black overflow-hidden bg-white">
+                        <img src={item.photoUrl} alt={stage} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center">
+                          <p className="text-[10px] font-bold">({idx + 1}) {stage}</p>
+                          <p className="text-[8px] text-neutral-500">{formatDate(item.timestamp)}</p>
+                        </div>
+                        {item.caption && <p className="text-[9px] text-neutral-700 font-medium">{item.caption}</p>}
+                        <p className="text-[8px] text-neutral-400">Reported by: {item.reportedBy}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+
+        <div className="page-break-before mt-12">
+          {/* BOQ Section */}
+          {project.jobs && project.jobs.length > 0 && (
+            <div className="mb-8">
+              <h3 className="text-sm font-bold bg-neutral-100 border border-black p-2 uppercase mb-4">BOQ REKONSILIASI</h3>
+              <table className="w-full border-collapse border border-black text-[10px]">
+                <thead>
+                  <tr className="bg-neutral-50">
+                    <th className="border border-black p-1 text-left">DESIGNATOR</th>
+                    <th className="border border-black p-1 text-left">URAIAN PEKERJAAN</th>
+                    <th className="border border-black p-1 text-center">QTY</th>
+                    <th className="border border-black p-1 text-right">HARGA SATUAN</th>
+                    <th className="border border-black p-1 text-right">SUBTOTAL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {project.jobs.map((j, idx) => (
+                    <tr key={idx}>
+                      <td className="border border-black p-1 font-mono">{j.designator || '-'}</td>
+                      <td className="border border-black p-1">{j.name}</td>
+                      <td className="border border-black p-1 text-center">{j.quantity}</td>
+                      <td className="border border-black p-1 text-right">Rp {j.price.toLocaleString()}</td>
+                      <td className="border border-black p-1 text-right">Rp {j.subtotal.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-neutral-50 font-bold">
+                    <td colSpan={4} className="border border-black p-1 text-right">TOTAL BOQ</td>
+                    <td className="border border-black p-1 text-right text-emerald-700">Rp {(project.totalJobCost || 0).toLocaleString()}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Materials Section */}
+          {project.materials && project.materials.length > 0 && (
+            <div className="mb-8">
+              <h3 className="text-sm font-bold bg-neutral-100 border border-black p-2 uppercase mb-4">MATERIAL TERPASANG</h3>
+              <table className="w-full border-collapse border border-black text-[10px]">
+                <thead>
+                  <tr className="bg-neutral-50">
+                    <th className="border border-black p-1 text-left">NAMA MATERIAL</th>
+                    <th className="border border-black p-1 text-center">QTY</th>
+                    <th className="border border-black p-1 text-right">HARGA SATUAN</th>
+                    <th className="border border-black p-1 text-right">SUBTOTAL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {project.materials.map((m, idx) => (
+                    <tr key={idx}>
+                      <td className="border border-black p-1">{m.name}</td>
+                      <td className="border border-black p-1 text-center">{m.quantity}</td>
+                      <td className="border border-black p-1 text-right">Rp {m.price.toLocaleString()}</td>
+                      <td className="border border-black p-1 text-right">Rp {m.subtotal.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-neutral-50 font-bold">
+                    <td colSpan={3} className="border border-black p-1 text-right">TOTAL MATERIAL</td>
+                    <td className="border border-black p-1 text-right text-emerald-700">Rp {(project.totalMaterialCost || 0).toLocaleString()}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Grand Total */}
+          <div className="mb-8 flex justify-end">
+            <div className="border-2 border-black p-4 bg-neutral-50">
+              <p className="text-[10px] font-bold text-neutral-500 uppercase">Grand Total Cost</p>
+              <p className="text-xl font-black text-emerald-600">Rp {(project.totalCost || 0).toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer Signatures */}
+        <div className="mt-24 grid grid-cols-2 gap-12 text-center text-sm">
+          <div className="space-y-20">
+            <p className="font-bold">PT TELKOM INFRASTRUKTUR INDONESIA<br />Waspang</p>
+            <div className="space-y-1">
+              <p className="font-bold underline uppercase">__________________________</p>
+              <p className="text-xs">NIK. </p>
+            </div>
+          </div>
+          <div className="space-y-20">
+            <p className="font-bold">PT TELKOM AKSES<br />Pelaksana Harian</p>
+            <div className="space-y-1">
+              <p className="font-bold underline uppercase">__________________________</p>
+              <p className="text-xs">NIK. </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-12 text-center text-[10px] text-neutral-400 italic">
+          Halaman 1/1 Created by AIS 4.0 (RAM)
+        </div>
+      </div>
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          body { background: white; }
+          .page-break-before { page-break-before: always; }
+          @page { margin: 20mm; }
+        }
+      `}} />
+    </div>
+  );
+}

@@ -1,1 +1,5 @@
-
+{
+  "name": "Ticketing & Repair Management System",
+  "description": "A comprehensive system for handling service tickets, customer data, repairs, material usage, and technician productivity.",
+  "requestFramePermissions": ["geolocation"]
+}

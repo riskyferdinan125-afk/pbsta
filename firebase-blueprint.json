@@ -1,0 +1,396 @@
+{
+  "entities": {
+    "Customer": {
+      "title": "Customer",
+      "description": "Customer information",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string", "description": "Unique customer identification number" },
+        "internetNumber": { "type": "string", "description": "Internet service number" },
+        "name": { "type": "string", "description": "Full name of the customer or company" },
+        "pic": { "type": "string", "description": "Person In Charge / Contact Person" },
+        "phone": { "type": "string", "description": "Contact phone number" },
+        "address": { "type": "string", "description": "Service address" },
+        "email": { "type": "string", "description": "Email address" },
+        "assets": { "type": "array", "items": { "type": "string" }, "description": "List of asset IDs" }
+      },
+      "required": ["name", "address"]
+    },
+    "Ticket": {
+      "title": "Ticket",
+      "description": "Service ticket for a customer complaint",
+      "type": "object",
+      "properties": {
+        "ticketNumber": { "type": "integer", "description": "Unique sequential ticket number" },
+        "internetNumber": { "type": "string", "description": "Internet service number" },
+        "customerId": { "type": "string", "description": "Reference to the customer" },
+        "description": { "type": "string", "description": "Description of the issue" },
+        "status": { "type": "string", "enum": ["open", "in-progress", "resolved", "closed"], "description": "Current status of the ticket" },
+        "priority": { "type": "string", "enum": ["low", "medium", "high", "urgent"], "description": "Priority level" },
+        "category": { "type": "string", "enum": ["Hardware", "Software", "Network", "Other"], "description": "Category of the issue" },
+        "subCategory": { "type": "string", "description": "Sub-category of the issue" },
+        "technicianIds": { "type": "array", "items": { "type": "string" }, "description": "List of assigned technician IDs" },
+        "dueDate": { "type": "string", "format": "date-time", "description": "Deadline for ticket resolution" },
+        "slaDeadline": { "type": "string", "format": "date-time", "description": "SLA resolution deadline" },
+        "slaStatus": { "type": "string", "enum": ["within-sla", "near-breach", "breached"], "description": "Current SLA status" },
+        "rating": { "type": "integer", "description": "Customer rating (1-5)" },
+        "feedback": { "type": "string", "description": "Customer feedback" },
+        "dependsOn": { "type": "array", "items": { "type": "string" }, "description": "List of ticket IDs that this ticket depends on" },
+        "checklist": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "task": { "type": "string" },
+              "completed": { "type": "boolean" },
+              "completedAt": { "type": "string", "format": "date-time" },
+              "completedBy": { "type": "string" },
+              "location": {
+                "type": "object",
+                "properties": {
+                  "lat": { "type": "number" },
+                  "lng": { "type": "number" }
+                }
+              }
+            },
+            "required": ["task", "completed"]
+          },
+          "description": "List of tasks to be completed for the ticket"
+        },
+        "beforePhoto": { "type": "string", "description": "URL to photo before work" },
+        "afterPhoto": { "type": "string", "description": "URL to photo after work" },
+        "totalTimeSpent": { "type": "integer", "description": "Total time spent in minutes" },
+        "isTimerRunning": { "type": "boolean", "description": "Whether the work timer is currently running" },
+        "timerStartedAt": { "type": "string", "format": "date-time", "description": "When the current timer session started" },
+        "lastLocation": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" },
+            "updatedAt": { "type": "string", "format": "date-time" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the ticket was created" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "When the ticket was last updated" }
+      },
+      "required": ["customerId", "description", "status", "priority", "createdAt"]
+    },
+    "Asset": {
+      "title": "Asset",
+      "description": "Customer hardware asset",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string" },
+        "name": { "type": "string" },
+        "model": { "type": "string" },
+        "serialNumber": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "maintenance", "retired"] },
+        "installationDate": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" }
+      },
+      "required": ["customerId", "name", "serialNumber", "status"]
+    },
+    "KnowledgeBaseArticle": {
+      "title": "Knowledge Base Article",
+      "description": "Internal documentation article",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "category": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "viewCount": { "type": "integer" }
+      },
+      "required": ["title", "content", "category", "createdBy"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System notification for a user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "warning", "error", "success"] },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "link": { "type": "string" }
+      },
+      "required": ["userId", "title", "message", "type", "read", "createdAt"]
+    },
+    "Material": {
+      "title": "Material",
+      "description": "Available materials for repairs",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Material name" },
+        "unit": { "type": "string", "description": "Unit of measurement (e.g., meters, pieces)" },
+        "price": { "type": "number", "description": "Price per unit" },
+        "quantity": { "type": "number", "description": "Current stock quantity" }
+      },
+      "required": ["name", "unit", "price"]
+    },
+    "Job": {
+      "title": "Job",
+      "description": "Available jobs (Pekerjaan) for projects",
+      "type": "object",
+      "properties": {
+        "designator": { "type": "string", "description": "Job designator code" },
+        "name": { "type": "string", "description": "Job name" },
+        "unit": { "type": "string", "description": "Unit of measurement" },
+        "materialPrice": { "type": "number", "description": "Material price component" },
+        "servicePrice": { "type": "number", "description": "Service/Labor price component" },
+        "price": { "type": "number", "description": "Total price (Material + Service)" }
+      },
+      "required": ["designator", "name", "unit", "materialPrice", "servicePrice", "price"]
+    },
+    "Technician": {
+      "title": "Technician",
+      "description": "Service technician information",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Full name" },
+        "nik": { "type": "string", "description": "National ID Number (NIK)" },
+        "email": { "type": "string", "description": "Email address" },
+        "phone": { "type": "string", "description": "Contact phone" },
+        "role": { "type": "string", "description": "Technician role/specialty" },
+        "photoURL": { "type": "string", "description": "Profile picture URL" },
+        "availabilityStatus": { "type": "string", "enum": ["Available", "Busy", "On Leave"], "description": "Current availability status" },
+        "workingDays": { "type": "array", "items": { "type": "string" }, "description": "Working days of the week" },
+        "workingHours": { "type": "string", "description": "Working hours" }
+      },
+      "required": ["name", "email", "role", "availabilityStatus"]
+    },
+    "RepairRecord": {
+      "title": "Repair Record",
+      "description": "Details of a repair performed on a ticket",
+      "type": "object",
+      "properties": {
+        "ticketId": { "type": "string", "description": "Reference to the ticket" },
+        "technicianId": { "type": "string", "description": "Technician who performed the repair" },
+        "startTime": { "type": "string", "format": "date-time", "description": "Start of work" },
+        "endTime": { "type": "string", "format": "date-time", "description": "End of work" },
+        "notes": { "type": "string", "description": "Work notes" },
+        "beforePhoto": { "type": "string", "description": "URL to photo before work" },
+        "afterPhoto": { "type": "string", "description": "URL to photo after work" },
+        "materialsUsed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "materialId": { "type": "string" },
+              "name": { "type": "string" },
+              "quantity": { "type": "number" },
+              "unitPrice": { "type": "number" }
+            }
+          }
+        }
+      },
+      "required": ["ticketId", "technicianId", "startTime"]
+    },
+    "TicketHistory": {
+      "title": "Ticket History",
+      "description": "Log of changes and notes for a ticket",
+      "type": "object",
+      "properties": {
+        "ticketId": { "type": "string", "description": "Reference to the ticket" },
+        "type": { "type": "string", "enum": ["status_change", "assignment_change", "note_added", "created"], "description": "Type of history event" },
+        "fromValue": { "type": "string", "description": "Previous value (if applicable)" },
+        "toValue": { "type": "string", "description": "New value or note content" },
+        "changedBy": { "type": "string", "description": "User who made the change" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "When the event occurred" }
+      },
+      "required": ["ticketId", "type", "toValue", "changedBy", "timestamp"]
+    },
+    "TicketNote": {
+      "title": "Ticket Note",
+      "description": "Internal notes for a ticket",
+      "type": "object",
+      "properties": {
+        "ticketId": { "type": "string", "description": "Reference to the ticket" },
+        "note": { "type": "string", "description": "The note content" },
+        "createdBy": { "type": "string", "description": "User who created the note" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the note was created" }
+      },
+      "required": ["ticketId", "note", "createdBy", "createdAt"]
+    },
+    "User": {
+      "title": "User",
+      "description": "System user profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["superadmin", "admin", "technician"] },
+        "photoURL": { "type": "string" },
+        "telegramId": { "type": "string", "description": "Telegram Chat ID for bot integration" }
+      },
+      "required": ["uid", "name", "email", "role"]
+    },
+    "FieldProgress": {
+      "title": "Field Progress",
+      "description": "Progress update from the field via Telegram",
+      "type": "object",
+      "properties": {
+        "internetNumber": { "type": "string" },
+        "ticketNumber": { "type": "string" },
+        "cause": { "type": "string" },
+        "action": { "type": "string" },
+        "location": { "type": "string" },
+        "materials": { "type": "string" },
+        "technician": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "chatId": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ticketNumber", "technician", "createdAt"]
+    },
+    "FieldClosure": {
+      "title": "Field Closure",
+      "description": "Closure update from the field via Telegram with photo evidence",
+      "type": "object",
+      "properties": {
+        "internetNumber": { "type": "string" },
+        "ticketNumber": { "type": "string" },
+        "cause": { "type": "string" },
+        "action": { "type": "string" },
+        "location": { "type": "string" },
+        "materials": { "type": "string" },
+        "technician": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "photoUrl": { "type": "string", "description": "URL or File ID of the evidence photo" },
+        "chatId": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ticketNumber", "technician", "photoUrl", "createdAt"]
+    },
+    "TelegramCommand": {
+      "title": "Telegram Command",
+      "description": "Customizable Telegram bot command",
+      "type": "object",
+      "properties": {
+        "command": { "type": "string", "description": "The command string (e.g., 'help')" },
+        "description": { "type": "string", "description": "Description of the command" },
+        "response": { "type": "string", "description": "The message the bot sends back" },
+        "isActive": { "type": "boolean", "description": "Whether the command is active" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["command", "response", "isActive"]
+    },
+    "TelegramConfig": {
+      "title": "Telegram Configuration",
+      "description": "System-wide settings for Telegram bot",
+      "type": "object",
+      "properties": {
+        "allowedStatuses": { "type": "array", "items": { "type": "string" }, "description": "List of valid ticket statuses" },
+        "allowedPriorities": { "type": "array", "items": { "type": "string" }, "description": "List of valid ticket priorities" },
+        "welcomeMessage": { "type": "string", "description": "Default welcome message" },
+        "helpMessage": { "type": "string", "description": "Default help message" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "TicketCategory": {
+      "title": "Ticket Category",
+      "description": "Categories and subcategories for tickets",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Category name" },
+        "subCategories": { "type": "array", "items": { "type": "string" }, "description": "List of subcategories" }
+      },
+      "required": ["name"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Record for project (Kegiatan) activities",
+      "type": "object",
+      "properties": {
+        "pid": { "type": "string", "description": "Project ID / Primary Key" },
+        "projectName": { "type": "string", "description": "Full name of the project" },
+        "contractNo": { "type": "string", "description": "Contract number" },
+        "orderNo": { "type": "string", "description": "Order number (Surat Pesanan)" },
+        "witel": { "type": "string", "description": "Witel area" },
+        "ticketId": { "type": "string", "description": "Reference to a ticket ID" },
+        "partner": { "type": "string", "description": "Mitra / Partner company" },
+        "description": { "type": "string", "description": "Description of the project" },
+        "location": { "type": "string", "description": "Location of the project" },
+        "status": { "type": "string", "enum": ["open", "in-progress", "completed"], "description": "Current status" },
+        "activityCost": { "type": "number", "description": "Cost of the activity itself" },
+        "totalMaterialCost": { "type": "number", "description": "Total cost of materials used" },
+        "totalJobCost": { "type": "number", "description": "Total cost of jobs performed" },
+        "totalCost": { "type": "number", "description": "Sum of activity, material, and job costs" },
+        "photos": { "type": "array", "items": { "type": "string" }, "description": "List of evidence photo URLs (Legacy)" },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "stage": { "type": "string" },
+              "photoUrl": { "type": "string" },
+              "caption": { "type": "string" },
+              "reportedBy": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" }
+            }
+          },
+          "description": "Structured project evidence"
+        },
+        "materials": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "materialId": { "type": "string" },
+              "name": { "type": "string" },
+              "quantity": { "type": "number" },
+              "price": { "type": "number" },
+              "subtotal": { "type": "number" }
+            }
+          },
+          "description": "List of materials used"
+        },
+        "jobs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "jobId": { "type": "string" },
+              "name": { "type": "string" },
+              "quantity": { "type": "number" },
+              "price": { "type": "number" },
+              "subtotal": { "type": "number" }
+            }
+          },
+          "description": "List of jobs performed"
+        },
+        "technicianId": { "type": "string", "description": "Technician in charge" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["pid", "description", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/customers": { "schema": "Customer", "description": "Collection of customers" },
+    "/tickets": { "schema": "Ticket", "description": "Collection of service tickets" },
+    "/materials": { "schema": "Material", "description": "Inventory of materials" },
+    "/technicians": { "schema": "Technician", "description": "Collection of technicians" },
+    "/repairRecords": { "schema": "RepairRecord", "description": "History of repairs performed" },
+    "/assets": { "schema": "Asset", "description": "Customer hardware assets" },
+    "/knowledgeBase": { "schema": "KnowledgeBaseArticle", "description": "Internal documentation" },
+    "/notifications": { "schema": "Notification", "description": "User notifications" },
+    "/counters": { "schema": "object", "description": "Atomic counters for sequential IDs" },
+    "/ticketHistory": { "schema": "TicketHistory", "description": "Audit log and notes for tickets" },
+    "/ticketNotes": { "schema": "TicketNote", "description": "Internal notes for tickets" },
+    "/users": { "schema": "User", "description": "User profiles" },
+    "/fieldProgress": { "schema": "FieldProgress", "description": "Progress updates from the field via Telegram" },
+    "/fieldClosures": { "schema": "FieldClosure", "description": "Closure updates from the field via Telegram" },
+    "/telegramCommands": { "schema": "TelegramCommand", "description": "Customizable bot commands" },
+    "/telegramConfig": { "schema": "TelegramConfig", "description": "System-wide bot settings" },
+    "/ticketCategories": { "schema": "TicketCategory", "description": "Categories and subcategories for tickets" },
+    "/projects": { "schema": "Project", "description": "Collection of project records" },
+    "/jobs": { "schema": "Job", "description": "Collection of available jobs" }
+  }
+}

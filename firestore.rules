@@ -1,1 +1,430 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: customers
+    // Fields: name (string), phone (string), address (string), email (string)
+    //
+    // Collection: tickets
+    // Fields: customerId (string), description (string), status (string), priority (string), technicianId (string), createdAt (timestamp), updatedAt (timestamp)
+    //
+    // Collection: materials
+    // Fields: name (string), unit (string), price (number), quantity (number)
+    //
+    // Collection: technicians
+    // Fields: name (string), email (string), phone (string), role (string), availabilityStatus (string), workingHours (string)
+    //
+    // Collection: repairRecords
+    // Fields: ticketId (string), technicianId (string), startTime (timestamp), endTime (timestamp), notes (string), materialsUsed (list of maps)
+    //
+    // Collection: projects
+    // Fields: pid (string), projectName (string), contractNo (string), orderNo (string), witel (string), description (string), location (string), status (string), activityCost (number), totalMaterialCost (number), totalCost (number), photos (list), materials (list), jobs (list), evidence (list), boq (list), technicianId (string), createdAt (timestamp), updatedAt (timestamp)
+    //
+    // ===============================================================
 
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isSuperAdmin() {
+      return isAuthenticated() &&
+        (request.auth.token.email == "rafandanetid@gmail.com" || 
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin'));
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (isSuperAdmin() || 
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+    }
+
+    function isStaf() {
+      return isAuthenticated() &&
+        (isAdmin() || 
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staf'));
+    }
+
+    function isTechnician() {
+      return isAuthenticated() &&
+        (isStaf() || 
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teknisi' ||
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'technician')));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // Domain Validators
+    function isValidCustomer(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.address is string && data.address.size() > 0 && data.address.size() < 500 &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() < 20)) &&
+             (!('email' in data) || (data.email is string && (data.email == "" || isValidEmail(data.email)))) &&
+             (!('internetNumber' in data) || data.internetNumber is string) &&
+             (!('pic' in data) || data.pic is string) &&
+             (!('customerId' in data) || data.customerId is string) &&
+             (!('odp' in data) || data.odp is string);
+    }
+
+    function isValidTicket(data) {
+      return data.ticketNumber is int && data.ticketNumber > 0 &&
+             data.customerId is string &&
+             data.description is string && data.description.size() > 0 && data.description.size() < 2000 &&
+             data.status in ['open', 'in-progress', 'resolved', 'closed'] &&
+             data.priority in ['low', 'medium', 'high', 'urgent'] &&
+             data.category is string &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp &&
+             (!('internetNumber' in data) || data.internetNumber is string) &&
+             (!('title' in data) || (data.title is string && data.title.size() < 200)) &&
+             (!('email' in data) || (data.email is string && (data.email == "" || isValidEmail(data.email)))) &&
+             (!('subCategory' in data) || data.subCategory is string || data.subCategory == null) &&
+             (!('technicianIds' in data) || data.technicianIds is list || data.technicianIds == null) &&
+             (!('dueDate' in data) || data.dueDate is timestamp || data.dueDate == null) &&
+             (!('slaDeadline' in data) || data.slaDeadline is timestamp || data.slaDeadline == null) &&
+             (!('slaStatus' in data) || data.slaStatus in ['within-sla', 'near-breach', 'breached'] || data.slaStatus == null) &&
+             (!('rating' in data) || (data.rating is int && data.rating >= 1 && data.rating <= 5) || data.rating == null) &&
+             (!('feedback' in data) || data.feedback is string || data.feedback == null) &&
+             (!('dependsOn' in data) || data.dependsOn is list || data.dependsOn == null) &&
+             (!('checklist' in data) || (data.checklist is list && data.checklist.size() <= 50)) &&
+             (!('beforePhoto' in data) || data.beforePhoto is string || data.beforePhoto == null) &&
+             (!('afterPhoto' in data) || data.afterPhoto is string || data.afterPhoto == null) &&
+             (!('totalTimeSpent' in data) || data.totalTimeSpent is int || data.totalTimeSpent == null) &&
+             (!('isTimerRunning' in data) || data.isTimerRunning is bool || data.isTimerRunning == null) &&
+             (!('timerStartedAt' in data) || data.timerStartedAt is timestamp || data.timerStartedAt == null) &&
+             (!('lastLocation' in data) || (data.lastLocation is map || data.lastLocation == null)) &&
+             (!('assetId' in data) || data.assetId is string || data.assetId == null) &&
+             (!('assignedAt' in data) || data.assignedAt is timestamp || data.assignedAt == null) &&
+             (!('resolvedAt' in data) || data.resolvedAt is timestamp || data.resolvedAt == null) &&
+             (!('closedAt' in data) || data.closedAt is timestamp || data.closedAt == null);
+    }
+
+    function isValidAsset(data) {
+      return data.customerId is string &&
+             data.name is string && data.name.size() > 0 &&
+             data.model is string &&
+             data.serialNumber is string &&
+             data.status in ['active', 'maintenance', 'retired'] &&
+             data.installationDate is timestamp &&
+             (!('notes' in data) || data.notes is string);
+    }
+
+    function isValidKnowledgeBaseArticle(data) {
+      return data.title is string && data.title.size() > 0 &&
+             data.content is string &&
+             data.category is string &&
+             data.tags is list &&
+             data.createdBy is string &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp &&
+             data.viewCount is int;
+    }
+
+    function isValidNotification(data) {
+      return data.userId is string &&
+             data.title is string &&
+             data.message is string &&
+             data.type in ['info', 'warning', 'error', 'success', 'low_stock', 'ticket_assigned', 'ticket_status_change', 'new_ticket'] &&
+             data.read is bool &&
+             data.createdAt is timestamp &&
+             (!('link' in data) || data.link is string);
+    }
+
+    function isValidMaterial(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.unit is string && data.unit.size() > 0 && data.unit.size() < 20 &&
+             data.price is number && data.price >= 0 &&
+             (!('quantity' in data) || data.quantity is number) &&
+             (!('lastUsedAt' in data) || data.lastUsedAt is timestamp);
+    }
+
+    function isValidJob(data) {
+      return data.name is string && data.name.size() > 0 &&
+             (data.price is number || data.price is int || data.price is float) &&
+             (!('designator' in data) || data.designator is string) &&
+             (!('unit' in data) || data.unit is string) &&
+             (!('materialPrice' in data) || data.materialPrice is number || data.materialPrice is int || data.materialPrice is float) &&
+             (!('servicePrice' in data) || data.servicePrice is number || data.servicePrice is int || data.servicePrice is float) &&
+             (!('createdAt' in data) || data.createdAt is timestamp || data.createdAt == null);
+    }
+
+    function isValidTechnician(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.email is string && isValidEmail(data.email) &&
+             data.role is string && data.role.size() > 0 &&
+             data.availabilityStatus in ['Available', 'Busy', 'On Leave', 'Offline'] &&
+             (!('nik' in data) || (data.nik is string && data.nik.size() <= 20)) &&
+             (!('phone' in data) || data.phone is string) &&
+             (!('photoURL' in data) || data.photoURL is string) &&
+             (!('workingDays' in data) || (data.workingDays is list && data.workingDays.size() <= 7)) &&
+             (!('workingHours' in data) || data.workingHours is string) &&
+             (!('createdAt' in data) || data.createdAt is timestamp) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    function isValidRepairRecord(data) {
+      return data.ticketId is string &&
+             data.technicianId is string &&
+             data.startTime is timestamp &&
+             data.materialsUsed is list &&
+             data.createdAt is timestamp &&
+             (!('jobsUsed' in data) || data.jobsUsed is list) &&
+             (!('endTime' in data) || data.endTime is timestamp || data.endTime == null) &&
+             (!('notes' in data) || data.notes is string) &&
+             (!('beforePhoto' in data) || data.beforePhoto is string || data.beforePhoto == null) &&
+             (!('afterPhoto' in data) || data.afterPhoto is string || data.afterPhoto == null) &&
+             (!('technicianName' in data) || data.technicianName is string) &&
+             (!('durationMinutes' in data) || data.durationMinutes is number);
+    }
+
+    function isValidTicketHistory(data) {
+      return data.ticketId is string &&
+             data.type is string &&
+             data.timestamp is timestamp &&
+             (!('userId' in data) || data.userId is string) &&
+             (!('description' in data) || data.description is string) &&
+             (!('fromValue' in data) || data.fromValue is string || data.fromValue is list || data.fromValue is int || data.fromValue is number || data.fromValue == null) &&
+             (!('toValue' in data) || data.toValue is string || data.toValue is list || data.toValue is int || data.toValue is number || data.toValue == null) &&
+             (!('changedBy' in data) || data.changedBy is string);
+    }
+
+    function isValidTicketNote(data) {
+      return data.ticketId is string &&
+             data.note is string && data.note.size() > 0 && data.note.size() < 5000 &&
+             data.createdBy is string &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidTelegramCommand(data) {
+      return data.command is string && data.command.size() > 0 && data.command.size() < 100 &&
+             data.response is string && data.response.size() > 0 && data.response.size() < 4000 &&
+             data.isActive is bool &&
+             (!('description' in data) || (data.description is string && data.description.size() < 500)) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    function isValidTelegramConfig(data) {
+      return (!('allowedStatuses' in data) || data.allowedStatuses is list) &&
+             (!('allowedPriorities' in data) || data.allowedPriorities is list) &&
+             (!('welcomeMessage' in data) || data.welcomeMessage is string) &&
+             (!('helpMessage' in data) || data.helpMessage is string) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    function isValidFieldProgress(data) {
+      return data.ticketNumber is string &&
+             data.technician is string &&
+             data.createdAt is timestamp &&
+             (!('internetNumber' in data) || data.internetNumber is string) &&
+             (!('cause' in data) || data.cause is string) &&
+             (!('action' in data) || data.action is string) &&
+             (!('location' in data) || data.location is string) &&
+             (!('materials' in data) || data.materials is string) &&
+             (!('customerPhone' in data) || data.customerPhone is string) &&
+             (!('chatId' in data) || data.chatId is int);
+    }
+
+    function isValidFieldClosure(data) {
+      return data.ticketNumber is string &&
+             data.technician is string &&
+             data.createdAt is timestamp &&
+             data.photoUrl is string &&
+             (!('internetNumber' in data) || data.internetNumber is string) &&
+             (!('cause' in data) || data.cause is string) &&
+             (!('action' in data) || data.action is string) &&
+             (!('location' in data) || data.location is string) &&
+             (!('materials' in data) || data.materials is string) &&
+             (!('customerPhone' in data) || data.customerPhone is string) &&
+             (!('chatId' in data) || data.chatId is int);
+    }
+
+    function isValidProject(data) {
+      return data.pid is string && data.pid.size() > 0 && data.pid.size() < 100 &&
+             data.description is string && data.description.size() > 0 && data.description.size() < 5000 &&
+             data.status in ['open', 'in-progress', 'completed'] &&
+             (!('projectName' in data) || (data.projectName is string && data.projectName.size() < 200)) &&
+             (!('contractNo' in data) || (data.contractNo is string && data.contractNo.size() < 100)) &&
+             (!('orderNo' in data) || (data.orderNo is string && data.orderNo.size() < 100)) &&
+             (!('witel' in data) || (data.witel is string && data.witel.size() < 100)) &&
+             (!('createdAt' in data) || data.createdAt is timestamp) &&
+             (!('ticketId' in data) || (data.ticketId is string && data.ticketId.size() < 100)) &&
+             (!('partner' in data) || (data.partner is string && data.partner.size() < 200)) &&
+             (!('location' in data) || (data.location is string && data.location.size() < 500)) &&
+             (!('activityCost' in data) || data.activityCost is number) &&
+             (!('totalMaterialCost' in data) || data.totalMaterialCost is number) &&
+             (!('totalJobCost' in data) || data.totalJobCost is number) &&
+             (!('totalCost' in data) || data.totalCost is number) &&
+             (!('photos' in data) || (data.photos is list && data.photos.size() <= 20)) &&
+             (!('materials' in data) || (data.materials is list && data.materials.size() <= 50)) &&
+             (!('jobs' in data) || (data.jobs is list && data.jobs.size() <= 50)) &&
+             (!('evidence' in data) || (data.evidence is list && data.evidence.size() <= 100)) &&
+             (!('boq' in data) || (data.boq is list && data.boq.size() <= 100)) &&
+             (!('technicianId' in data) || data.technicianId is string) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    function isValidUser(data) {
+      return data.uid is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.email is string && isValidEmail(data.email) &&
+             data.role in ['superadmin', 'admin', 'staf', 'teknisi'] &&
+             (!('photoURL' in data) || data.photoURL is string) &&
+             (!('telegramId' in data) || data.telegramId is string) &&
+             (!('password' in data) || (data.password is string && data.password.size() < 100)) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    // Rules
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId && 
+        isValidUser(request.resource.data) && (
+          request.resource.data.role == 'staf' || 
+          (request.resource.data.role == 'superadmin' && request.resource.data.email == "rafandanetid@gmail.com")
+        );
+      allow update: if isAuthenticated() && (
+        (request.auth.uid == userId && request.resource.data.role == resource.data.role && isValidUser(request.resource.data)) ||
+        (isSuperAdmin() && isValidUser(request.resource.data))
+      );
+      allow delete: if isSuperAdmin();
+    }
+
+    match /fieldProgress/{progressId} {
+      allow read: if isAuthenticated();
+      allow create: if true; // Allow bot to create entries
+      allow update, delete: if isAdmin();
+    }
+
+    match /fieldClosures/{closureId} {
+      allow read: if isAuthenticated();
+      allow create: if true; // Allow bot to create entries
+      allow update, delete: if isAdmin();
+    }
+
+    match /customers/{customerId} {
+      allow read: if true; // Allow bot to check for existing customers
+      allow create: if true; // Allow bot to create customers
+      allow update: if isAuthenticated() && isValidCustomer(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /tickets/{ticketId} {
+      allow read: if true; // Allow bot to read tickets for /assign and /progres
+      allow create: if isValidTicket(request.resource.data); // Enforce validation on create
+      allow update: if (isAdmin() || isTechnician() || request.auth == null) && isValidTicket(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /ticketCategories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /assets/{assetId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() && isValidAsset(request.resource.data);
+    }
+
+    match /knowledgeBase/{articleId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() && isValidKnowledgeBaseArticle(request.resource.data);
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId || 
+        (resource.data.userId == 'admin' && isAdmin())
+      );
+      allow update: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId || 
+        (resource.data.userId == 'admin' && isAdmin())
+      ) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'updatedAt']);
+      allow create: if isAuthenticated() && isValidNotification(request.resource.data);
+    }
+
+    match /materials/{materialId} {
+      allow read: if isAuthenticated();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || isTechnician();
+    }
+
+    match /technicians/{techId} {
+      allow read: if true; // Allow bot to read technicians for NIK verification
+      allow create: if (isAdmin() || request.auth == null) && isValidTechnician(request.resource.data);
+      allow update: if isAdmin() || request.auth == null || (
+        isAuthenticated() && 
+        request.auth.token.email == resource.data.email && 
+        isValidTechnician(request.resource.data) &&
+        request.resource.data.email == resource.data.email && // Cannot change own email
+        request.resource.data.role == resource.data.role // Cannot change own role
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /repairRecords/{recordId} {
+      allow read: if isAuthenticated();
+      allow create: if (isTechnician() || request.auth == null) && isValidRepairRecord(request.resource.data);
+      allow update: if isTechnician() && isValidRepairRecord(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /counters/{counterId} {
+      allow read, write: if true; // Allow bot and app to manage sequential IDs
+    }
+
+    match /test/{docId} {
+      allow read: if true; // Public read for connection testing
+    }
+
+    match /ticketHistory/{historyId} {
+      allow read: if isAuthenticated();
+      allow create: if isValidTicketHistory(request.resource.data);
+    }
+
+    match /ticketNotes/{noteId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidTicketNote(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /telegramCommands/{commandId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidTelegramCommand(request.resource.data);
+    }
+
+    match /telegramConfig/{configId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidTelegramConfig(request.resource.data);
+    }
+
+    match /projects/{projectId} {
+      allow read: if true;
+      allow create, update: if (isAuthenticated() || request.auth == null) && isValidProject(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /jobs/{jobId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() && (request.auth.token.email == "rafandanetid@gmail.com" || isValidJob(request.resource.data));
+      allow delete: if isAdmin();
+    }
+  }
+}
