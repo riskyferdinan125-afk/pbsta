@@ -83,6 +83,11 @@ export default function TicketRow({
       <td className="px-6 py-4">
         <div className="flex flex-col">
           <span className="text-xs font-mono font-bold text-neutral-400">#{ticket.ticketNumber || '---'}</span>
+          {ticket.inseraTicketId && (
+            <span className="text-[9px] font-bold text-blue-500 uppercase tracking-tighter bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 w-fit mt-0.5">
+              {ticket.inseraTicketId}
+            </span>
+          )}
           <div className={`mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border w-fit ${getPriorityColor(ticket.priority)}`}>
             {ticket.priority}
           </div>

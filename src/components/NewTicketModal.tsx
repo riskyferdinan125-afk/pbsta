@@ -9,7 +9,8 @@ import {
   Calendar, 
   Mail, 
   Link as LinkIcon,
-  Check
+  Check,
+  Activity
 } from 'lucide-react';
 import { Customer, Technician, TicketCategory, TicketPriority, TicketStatus } from '../types';
 import TicketSelector from './TicketSelector';
@@ -140,6 +141,21 @@ export default function NewTicketModal({
                       <option value="PREVENTIVE">PREVENTIVE</option>
                       <option value="Other">Other</option>
                     </select>
+                  </div>
+                </div>
+
+                {/* Insera Ticket ID */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Insera Ticket ID (Optional)</label>
+                  <div className="relative">
+                    <Activity className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+                    <input
+                      type="text"
+                      placeholder="Enter Insera ID..."
+                      value={newTicket.inseraTicketId || ''}
+                      onChange={(e) => setNewTicket({ ...newTicket, inseraTicketId: e.target.value })}
+                      className="w-full pl-10 pr-4 py-3 bg-neutral-50 border border-black/5 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all font-medium"
+                    />
                   </div>
                 </div>
 

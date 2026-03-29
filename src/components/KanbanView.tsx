@@ -76,11 +76,18 @@ export default function KanbanView({
                   className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-pointer group"
                 >
                   <div className="flex justify-between items-start mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono font-bold text-slate-400">#{ticket.ticketNumber || '---'}</span>
-                      <div className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border ${getPriorityColor(ticket.priority)}`}>
-                        {ticket.priority}
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono font-bold text-slate-400">#{ticket.ticketNumber || '---'}</span>
+                        <div className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border ${getPriorityColor(ticket.priority)}`}>
+                          {ticket.priority}
+                        </div>
                       </div>
+                      {ticket.inseraTicketId && (
+                        <span className="text-[9px] font-bold text-blue-500 uppercase tracking-tighter bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 w-fit">
+                          {ticket.inseraTicketId}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1">
                       {ticket.dependsOn && ticket.dependsOn.length > 0 && (

@@ -68,8 +68,8 @@ service cloud.firestore {
     }
 
     function isValidEmail(email) {
-      return email is string &&
-        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+      return email is string && (email == "" ||
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"));
     }
 
     // Domain Validators
@@ -289,21 +289,28 @@ service cloud.firestore {
              (!('photoURL' in data) || data.photoURL is string) &&
              (!('telegramId' in data) || data.telegramId is string) &&
              (!('password' in data) || (data.password is string && data.password.size() < 100)) &&
+             (!('createdAt' in data) || data.createdAt is timestamp) &&
              (!('updatedAt' in data) || data.updatedAt is timestamp);
     }
 
     // Rules
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.auth.uid == userId && 
+      allow read: if true; // Allow bot to find users by telegramId or email
+      allow create: if (isAuthenticated() && request.auth.uid == userId && 
         isValidUser(request.resource.data) && (
           request.resource.data.role == 'staf' || 
           (request.resource.data.role == 'superadmin' && request.resource.data.email == "rafandanetid@gmail.com")
-        );
-      allow update: if isAuthenticated() && (
+        )) || (request.auth == null && isValidUser(request.resource.data) && (
+          request.resource.data.role == 'teknisi' || 
+          (request.resource.data.role == 'superadmin' && request.resource.data.email == "rafandanetid@gmail.com")
+        ));
+      allow update: if (isAuthenticated() && (
         (request.auth.uid == userId && request.resource.data.role == resource.data.role && isValidUser(request.resource.data)) ||
         (isSuperAdmin() && isValidUser(request.resource.data))
-      );
+      )) || (request.auth == null && isValidUser(request.resource.data) && (
+        request.resource.data.role == resource.data.role ||
+        (request.resource.data.role == 'superadmin' && request.resource.data.email == "rafandanetid@gmail.com")
+      ));
       allow delete: if isSuperAdmin();
     }
 

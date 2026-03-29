@@ -41,6 +41,7 @@ export interface ChecklistItem {
 export interface Ticket {
   id: string;
   ticketNumber: number;
+  inseraTicketId?: string;
   customerId: string;
   title?: string; // Added title
   description: string;
@@ -248,6 +249,7 @@ export interface Project {
   description: string;
   location?: string;
   status: 'open' | 'in-progress' | 'completed';
+  inseraTicketIds?: string[];
   activityCost?: number;
   totalMaterialCost?: number;
   totalJobCost?: number;

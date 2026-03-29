@@ -181,7 +181,14 @@ export default function TicketProgress({ profile }: { profile: UserProfile | nul
 
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">#{ticket.ticketNumber}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">#{ticket.ticketNumber}</span>
+                    {ticket.inseraTicketId && (
+                      <span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+                        {ticket.inseraTicketId}
+                      </span>
+                    )}
+                  </div>
                   <h3 className="font-bold text-neutral-900 truncate max-w-[200px]">{ticket.customerName}</h3>
                 </div>
                 <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full ${

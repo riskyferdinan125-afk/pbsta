@@ -81,6 +81,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
     description: '',
     location: '',
     status: 'open' as Project['status'],
+    inseraTicketIds: [] as string[],
     activityCost: 0,
   });
   const [selectedMaterials, setSelectedMaterials] = useState<ProjectMaterial[]>([]);
@@ -370,13 +371,17 @@ export default function ProjectList({ profile }: ProjectListProps) {
       doc.setFont("helvetica", "bold");
       doc.text("BOQ REKONSILIASI", margin, currentY + 5);
       
-      const boqData = (project.jobs || []).map(j => [
-        j.designator || "-",
-        j.name,
-        j.quantity.toString(),
-        `Rp ${j.price.toLocaleString()}`,
-        `Rp ${j.subtotal.toLocaleString()}`
-      ]);
+      const boqData = [
+        ...(project.jobs || []).map(j => [
+          j.designator || "-",
+          j.name,
+          j.quantity.toString(),
+          `Rp ${j.price.toLocaleString()}`,
+          `Rp ${j.subtotal.toLocaleString()}`
+        ]),
+        ['', '', '', 'TOTAL BOQ', `Rp ${(project.totalJobCost || 0).toLocaleString()}`],
+        ...(project.activityCost ? [['', '', '', 'BIAYA AKTIVITAS', `Rp ${project.activityCost.toLocaleString()}`]] : [])
+      ];
 
       autoTable(doc, {
         startY: currentY + 8,
@@ -385,15 +390,18 @@ export default function ProjectList({ profile }: ProjectListProps) {
         theme: 'grid',
         headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
         styles: { fontSize: 8 },
+        columnStyles: {
+          4: { fontStyle: 'bold', halign: 'right' }
+        },
+        didParseCell: (data) => {
+          if (data.row.index >= (project.jobs?.length || 0)) {
+            data.cell.styles.fontStyle = 'bold';
+          }
+        },
         margin: { left: margin, right: margin }
       });
 
       currentY = (doc as any).lastAutoTable.finalY + 10;
-
-      // Grand Total
-      doc.setFontSize(12);
-      doc.setFont("helvetica", "bold");
-      doc.text(`GRAND TOTAL COST: Rp ${(project.totalJobCost || 0).toLocaleString()}`, pageWidth - margin, currentY, { align: "right" });
 
       // Last Page: Signatures
       doc.addPage();
@@ -477,6 +485,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
         description: project.description,
         location: project.location || '',
         status: project.status,
+        inseraTicketIds: project.inseraTicketIds || [],
         activityCost: project.activityCost || 0,
       });
       setSelectedMaterials(project.materials || []);
@@ -494,6 +503,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
         description: '',
         location: '',
         status: 'open',
+        inseraTicketIds: [],
         activityCost: 0,
       });
       setSelectedMaterials([]);
@@ -673,6 +683,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
     } else {
       setSelectedJobs([...selectedJobs, {
         jobId: job.id,
+        designator: job.designator,
         name: job.name,
         quantity: 1,
         materialPrice: job.materialPrice || 0,
@@ -1416,6 +1427,16 @@ export default function ProjectList({ profile }: ProjectListProps) {
                                   <td colSpan={4} className="px-4 py-2 text-right font-medium text-neutral-500">Job Subtotal</td>
                                   <td className="px-4 py-2 text-right font-bold text-emerald-600">Rp {(project.totalJobCost || 0).toLocaleString()}</td>
                                 </tr>
+                                {project.activityCost && project.activityCost > 0 && (
+                                  <tr className="bg-neutral-50/50">
+                                    <td colSpan={4} className="px-4 py-2 text-right font-medium text-neutral-500">Activity Cost</td>
+                                    <td className="px-4 py-2 text-right font-bold text-emerald-600">Rp {project.activityCost.toLocaleString()}</td>
+                                  </tr>
+                                )}
+                                <tr className="bg-neutral-900 text-white">
+                                  <td colSpan={4} className="px-4 py-3 text-right font-bold uppercase tracking-wider">Grand Total Cost</td>
+                                  <td className="px-4 py-3 text-right font-black text-emerald-400 text-lg">Rp {(project.totalCost || 0).toLocaleString()}</td>
+                                </tr>
                               </tbody>
                             </table>
                           </div>
@@ -1424,49 +1445,23 @@ export default function ProjectList({ profile }: ProjectListProps) {
                         )}
                       </div>
 
-                      {/* Materials Section */}
+                      {/* Insera Tickets Section */}
                       <div>
                         <h4 className="text-sm font-bold text-neutral-900 mb-3 flex items-center gap-2">
-                          <Package className="w-4 h-4" />
-                          Materials Used
+                          <Activity className="w-4 h-4 text-blue-500" />
+                          TIKET INSERA
                         </h4>
-                        {project.materials && project.materials.length > 0 ? (
-                          <div className="bg-white rounded-xl border border-black/5 overflow-hidden">
-                            <table className="w-full text-sm text-left">
-                              <thead className="bg-neutral-50 text-neutral-500 font-medium">
-                                <tr>
-                                  <th className="px-4 py-2">Material</th>
-                                  <th className="px-4 py-2 text-center">Qty</th>
-                                  <th className="px-4 py-2 text-right">Price</th>
-                                  <th className="px-4 py-2 text-right">Subtotal</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-black/5">
-                                {project.materials.map((m, idx) => (
-                                  <tr key={idx}>
-                                    <td className="px-4 py-2 font-medium text-neutral-900">{m.name}</td>
-                                    <td className="px-4 py-2 text-center">{m.quantity}</td>
-                                    <td className="px-4 py-2 text-right text-neutral-500">Rp {m.price.toLocaleString()}</td>
-                                    <td className="px-4 py-2 text-right font-bold text-neutral-900">Rp {m.subtotal.toLocaleString()}</td>
-                                  </tr>
-                                ))}
-                                <tr className="bg-neutral-50/50">
-                                  <td colSpan={3} className="px-4 py-2 text-right font-medium text-neutral-500">Material Subtotal</td>
-                                  <td className="px-4 py-2 text-right font-bold text-emerald-600">Rp {(project.totalMaterialCost || 0).toLocaleString()}</td>
-                                </tr>
-                                <tr className="bg-neutral-50/50">
-                                  <td colSpan={3} className="px-4 py-2 text-right font-medium text-neutral-500">Activity Cost</td>
-                                  <td className="px-4 py-2 text-right font-bold text-emerald-600">Rp {(project.activityCost || 0).toLocaleString()}</td>
-                                </tr>
-                                <tr className="bg-emerald-50">
-                                  <td colSpan={3} className="px-4 py-2 text-right font-bold text-emerald-700">GRAND TOTAL</td>
-                                  <td className="px-4 py-2 text-right font-black text-emerald-800">Rp {(project.totalCost || 0).toLocaleString()}</td>
-                                </tr>
-                              </tbody>
-                            </table>
+                        {project.inseraTicketIds && project.inseraTicketIds.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {project.inseraTicketIds.map((id, idx) => (
+                              <div key={idx} className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-xl text-xs font-bold border border-blue-100 flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+                                {id}
+                              </div>
+                            ))}
                           </div>
                         ) : (
-                          <p className="text-xs text-neutral-500 italic">No materials recorded.</p>
+                          <p className="text-xs text-neutral-500 italic">No Insera tickets recorded.</p>
                         )}
                       </div>
                     </div>
@@ -1653,6 +1648,55 @@ export default function ProjectList({ profile }: ProjectListProps) {
                         className="w-full px-4 py-2 bg-neutral-50 border border-black/5 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                         placeholder="e.g. Area Jakarta Selatan"
                       />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-500 uppercase mb-1">Tiket Insera</label>
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {formData.inseraTicketIds.map((id, idx) => (
+                          <div key={idx} className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold border border-blue-100">
+                            <span>{id}</span>
+                            <button 
+                              type="button"
+                              onClick={() => setFormData({ ...formData, inseraTicketIds: formData.inseraTicketIds.filter((_, i) => i !== idx) })}
+                              className="hover:text-red-500 transition-colors"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          id="newInseraTicket"
+                          placeholder="Add Insera Ticket ID..."
+                          className="flex-1 px-4 py-2 bg-neutral-50 border border-black/5 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const val = (e.target as HTMLInputElement).value.trim();
+                              if (val && !formData.inseraTicketIds.includes(val)) {
+                                setFormData({ ...formData, inseraTicketIds: [...formData.inseraTicketIds, val] });
+                                (e.target as HTMLInputElement).value = '';
+                              }
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const input = document.getElementById('newInseraTicket') as HTMLInputElement;
+                            const val = input.value.trim();
+                            if (val && !formData.inseraTicketIds.includes(val)) {
+                              setFormData({ ...formData, inseraTicketIds: [...formData.inseraTicketIds, val] });
+                              input.value = '';
+                            }
+                          }}
+                          className="px-4 py-2 bg-neutral-900 text-white rounded-xl hover:bg-black transition-all text-xs font-bold"
+                        >
+                          ADD
+                        </button>
+                      </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>

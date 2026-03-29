@@ -8,6 +8,33 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import TelegramBot from 'node-telegram-bot-api';
 
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+function handleFirestoreError(error: any, operationType: OperationType, path: string | null) {
+  const errInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: null,
+      email: null,
+      emailVerified: false,
+      isAnonymous: true,
+      tenantId: null,
+      providerInfo: []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -104,7 +131,10 @@ async function getOrCreateTechnician(userDoc: any, chatId: number, targetTicket?
     
     bot?.sendMessage(chatId, `✅ *Data Teknisi Dibuat Otomatis*\n\nAkun Anda telah didaftarkan sebagai teknisi dengan NIK: \`${newTechData.nik}\`.`, { parse_mode: 'Markdown' });
     return newSnap;
-  } catch (e) {
+  } catch (e: any) {
+    if (e.message?.includes('insufficient permissions')) {
+      handleFirestoreError(e, OperationType.WRITE, 'technicians');
+    }
     console.error("Error in getOrCreateTechnician:", e);
     return null;
   }
@@ -186,7 +216,10 @@ async function getAuthorizedUser(chatId: number) {
     }
 
     return userSnap.docs[0];
-  } catch (e) {
+  } catch (e: any) {
+    if (e.message?.includes('insufficient permissions')) {
+      handleFirestoreError(e, OperationType.LIST, 'users');
+    }
     console.error("Error in getAuthorizedUser:", e);
     return null;
   }

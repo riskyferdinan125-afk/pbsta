@@ -862,6 +862,12 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                             {ticket.subCategory}
                           </span>
                         )}
+                        {ticket.inseraTicketId && (
+                          <div className="mt-2 flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-xl text-[10px] font-bold border border-blue-100 w-fit ml-5">
+                            <Box className="w-3 h-3 text-blue-500" />
+                            INSERA: {ticket.inseraTicketId}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="space-y-1">

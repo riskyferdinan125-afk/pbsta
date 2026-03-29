@@ -99,6 +99,15 @@ export default function ProjectReport({ project, onClose }: ProjectReportProps) 
           
           <div className="font-bold uppercase">PELAKSANA</div>
           <div>: {project.partner || 'PT TELKOM AKSES'}</div>
+
+          {project.inseraTicketIds && project.inseraTicketIds.length > 0 && (
+            <>
+              <div className="font-bold uppercase">TIKET INSERA</div>
+              <div className="flex flex-wrap gap-2">
+                : {project.inseraTicketIds.join(', ')}
+              </div>
+            </>
+          )}
         </div>
 
         <hr className="border-black border-t-2 mb-8" />
@@ -165,18 +174,16 @@ export default function ProjectReport({ project, onClose }: ProjectReportProps) 
                     <td colSpan={4} className="border border-black p-1 text-right">TOTAL BOQ</td>
                     <td className="border border-black p-1 text-right text-emerald-700">Rp {(project.totalJobCost || 0).toLocaleString()}</td>
                   </tr>
+                  {project.activityCost && project.activityCost > 0 ? (
+                    <tr className="bg-neutral-50 font-bold">
+                      <td colSpan={4} className="border border-black p-1 text-right">BIAYA AKTIVITAS</td>
+                      <td className="border border-black p-1 text-right text-emerald-700">Rp {project.activityCost.toLocaleString()}</td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>
           )}
-
-          {/* Grand Total */}
-          <div className="mb-8 flex justify-end">
-            <div className="border-2 border-black p-4 bg-neutral-50">
-              <p className="text-[10px] font-bold text-neutral-500 uppercase">Grand Total Cost</p>
-              <p className="text-xl font-black text-emerald-600">Rp {(project.totalJobCost || 0).toLocaleString()}</p>
-            </div>
-          </div>
         </div>
 
         {/* Footer Signatures */}
