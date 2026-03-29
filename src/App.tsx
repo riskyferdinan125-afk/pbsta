@@ -16,6 +16,7 @@ import {
   Menu,
   X,
   Activity,
+  TrendingUp,
   Settings as SettingsIcon,
   UserPlus,
   ClipboardList,
@@ -47,13 +48,14 @@ import TechnicianGuide from './components/TechnicianGuide';
 import UserProfileView from './components/UserProfile';
 import TelegramSettings from './components/TelegramSettings';
 import ProjectList from './components/ProjectList';
+import EmployeeProductivity from './components/EmployeeProductivity';
 import PekerjaanList from './components/PekerjaanList';
 import Login from './components/Login';
 import { signInAnonymously } from 'firebase/auth';
 import UserManagement from './components/UserManagement';
 // import Login from './components/Login'; // Removed Google Login
 
-type View = 'dashboard' | 'tickets' | 'assignments' | 'customers' | 'materials' | 'pekerjaan' | 'technicians' | 'reports' | 'progress' | 'settings' | 'knowledge' | 'assets' | 'portal' | 'notifications' | 'profile' | 'telegram' | 'projects' | 'users';
+type View = 'dashboard' | 'tickets' | 'assignments' | 'customers' | 'materials' | 'pekerjaan' | 'technicians' | 'reports' | 'progress' | 'settings' | 'knowledge' | 'assets' | 'portal' | 'notifications' | 'profile' | 'telegram' | 'projects' | 'users' | 'productivity';
 
 import { ToastProvider } from './components/Toast';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -208,6 +210,7 @@ function AppContent() {
     { id: 'portal', label: 'Customer Portal', icon: UserCircle, roles: ['staf'] },
     { id: 'profile', label: 'My Profile', icon: UserCircle, roles: ['superadmin', 'admin', 'staf', 'teknisi'] },
     { id: 'reports', label: 'Reports', icon: BarChart3, roles: ['superadmin', 'admin', 'staf', 'teknisi'] },
+    { id: 'productivity', label: 'Productivity', icon: TrendingUp, roles: ['superadmin', 'admin', 'staf'] },
     { id: 'users', label: 'User Management', icon: Users, roles: ['superadmin'] },
     { id: 'telegram', label: 'Telegram Integration', icon: Send, roles: ['superadmin'] },
     { id: 'settings', label: 'Settings', icon: SettingsIcon, roles: ['superadmin'] },
@@ -429,6 +432,7 @@ function AppContent() {
               {activeView === 'progress' && <TicketProgress profile={profile} />}
               {activeView === 'assignments' && <TicketAssignment profile={profile} />}
               {activeView === 'reports' && <Reports profile={profile} />}
+              {activeView === 'productivity' && <EmployeeProductivity profile={profile} />}
               {activeView === 'projects' && <ProjectList profile={profile} />}
               {activeView === 'settings' && <Settings />}
             {activeView === 'knowledge' && <KnowledgeBase />}

@@ -177,19 +177,8 @@ export default function ProjectList({ profile }: ProjectListProps) {
     ]);
     const boqFooter = [["", "", "", "TOTAL BOQ", project.totalJobCost || 0], []];
 
-    // Materials Section
-    const matHeader = [["MATERIAL TERPASANG", "", "", ""]];
-    const matSubHeader = [["NAMA MATERIAL", "QTY", "HARGA SATUAN", "SUBTOTAL"]];
-    const matData = (project.materials || []).map(m => [
-      m.name,
-      m.quantity,
-      m.price,
-      m.subtotal
-    ]);
-    const matFooter = [["", "", "TOTAL MATERIAL", project.totalMaterialCost || 0], []];
-
     // Grand Total
-    const grandTotal = [["", "", "GRAND TOTAL COST", project.totalCost || 0], []];
+    const grandTotal = [["", "", "GRAND TOTAL COST", project.totalJobCost || 0], []];
 
     // Evidence Section
     const evidenceHeader = [["EVIDEN FOTO", "", "", ""]];
@@ -213,10 +202,6 @@ export default function ProjectList({ profile }: ProjectListProps) {
       ...boqSubHeader,
       ...boqData,
       ...boqFooter,
-      ...matHeader,
-      ...matSubHeader,
-      ...matData,
-      ...matFooter,
       ...grandTotal
     ];
     
@@ -375,9 +360,9 @@ export default function ProjectList({ profile }: ProjectListProps) {
         }
       }
 
-      // Page: Project Summary (BOQ & Materials) - Moved to end
+      // Page: Project Summary (BOQ) - Moved to end
       doc.addPage();
-      let currentY = drawHeader("BOQ REKONSILIASI & MATERIAL", pageNum, pageNum + 1);
+      let currentY = drawHeader("BOQ REKONSILIASI", pageNum, pageNum + 1);
       pageNum++;
       
       // BOQ Table
@@ -405,34 +390,10 @@ export default function ProjectList({ profile }: ProjectListProps) {
 
       currentY = (doc as any).lastAutoTable.finalY + 10;
 
-      // Materials Table
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "bold");
-      doc.text("MATERIAL TERPASANG", margin, currentY);
-
-      const matData = (project.materials || []).map(m => [
-        m.name,
-        m.quantity.toString(),
-        `Rp ${m.price.toLocaleString()}`,
-        `Rp ${m.subtotal.toLocaleString()}`
-      ]);
-
-      autoTable(doc, {
-        startY: currentY + 3,
-        head: [['NAMA MATERIAL', 'QTY', 'HARGA', 'SUBTOTAL']],
-        body: matData,
-        theme: 'grid',
-        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
-        styles: { fontSize: 8 },
-        margin: { left: margin, right: margin }
-      });
-
-      currentY = (doc as any).lastAutoTable.finalY + 10;
-
       // Grand Total
       doc.setFontSize(12);
       doc.setFont("helvetica", "bold");
-      doc.text(`GRAND TOTAL COST: Rp ${(project.totalCost || 0).toLocaleString()}`, pageWidth - margin, currentY, { align: "right" });
+      doc.text(`GRAND TOTAL COST: Rp ${(project.totalJobCost || 0).toLocaleString()}`, pageWidth - margin, currentY, { align: "right" });
 
       // Last Page: Signatures
       doc.addPage();
@@ -545,16 +506,13 @@ export default function ProjectList({ profile }: ProjectListProps) {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const totalMaterialCost = selectedMaterials.reduce((sum, m) => sum + m.subtotal, 0);
     const totalJobCost = selectedJobs.reduce((sum, j) => sum + j.subtotal, 0);
-    const totalCost = (formData.activityCost || 0) + totalMaterialCost + totalJobCost;
+    const totalCost = (formData.activityCost || 0) + totalJobCost;
 
     const data = {
       ...formData,
-      materials: selectedMaterials,
       jobs: selectedJobs,
       evidence,
-      totalMaterialCost,
       totalJobCost,
       totalCost,
       updatedAt: serverTimestamp(),
@@ -602,10 +560,6 @@ export default function ProjectList({ profile }: ProjectListProps) {
         location: 'Jl. Pahlawan, Madiun',
         status: 'in-progress',
         activityCost: 500000,
-        materials: [
-          { materialId: 'm1', name: 'Fiber Optic Cable 24 Core', quantity: 500, price: 15000, subtotal: 7500000 },
-          { materialId: 'm2', name: 'Closure 24 Core', quantity: 2, price: 450000, subtotal: 900000 }
-        ],
         jobs: [
           { 
             jobId: 'j1', 
@@ -1996,144 +1950,6 @@ export default function ProjectList({ profile }: ProjectListProps) {
                     </div>
                   </div>
                 </div>
-
-                {/* Materials Section */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-bold text-neutral-900 uppercase tracking-wider">Materials Used</h4>
-                    <div className="text-sm font-bold text-emerald-600">
-                      Material Total: Rp {selectedMaterials.reduce((sum, m) => sum + m.subtotal, 0).toLocaleString()}
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Material List */}
-                    <div className="md:col-span-1 bg-neutral-50 rounded-2xl p-4 border border-black/5 flex flex-col gap-3">
-                      <div className="flex flex-col gap-2">
-                        <p className="text-[10px] font-bold text-neutral-400 uppercase">Available Materials</p>
-                        <div className="relative">
-                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-neutral-400" />
-                          <input
-                            type="text"
-                            placeholder="Search materials..."
-                            value={materialSearchTerm}
-                            onChange={(e) => setMaterialSearchTerm(e.target.value)}
-                            className="w-full pl-8 pr-3 py-1.5 bg-white border border-black/5 rounded-lg text-[10px] focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                          />
-                        </div>
-                      </div>
-                      <div className="max-h-[250px] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                        {(() => {
-                          const filtered = materials.filter(m => 
-                            m.name.toLowerCase().includes(materialSearchTerm.toLowerCase())
-                          );
-                          const totalPages = Math.ceil(filtered.length / MATERIALS_PER_PAGE);
-                          const start = (materialPage - 1) * MATERIALS_PER_PAGE;
-                          const paginated = filtered.slice(start, start + MATERIALS_PER_PAGE);
-
-                          return (
-                            <>
-                              {paginated.map(m => (
-                                <button
-                                  key={m.id}
-                                  type="button"
-                                  onClick={() => addMaterial(m)}
-                                  className="w-full text-left p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all flex items-center justify-between group"
-                                >
-                                  <div className="min-w-0">
-                                    <p className="text-xs font-bold text-neutral-900 truncate">{m.name}</p>
-                                    <p className="text-[10px] text-neutral-500">Rp {m.price.toLocaleString()} / {m.unit}</p>
-                                  </div>
-                                  <Plus className="w-4 h-4 text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                </button>
-                              ))}
-                              
-                              {filtered.length > MATERIALS_PER_PAGE && (
-                                <div className="flex items-center justify-between pt-2 border-t border-black/5">
-                                  <button
-                                    type="button"
-                                    onClick={() => setMaterialPage(p => Math.max(1, p - 1))}
-                                    disabled={materialPage === 1}
-                                    className="p-1 hover:bg-white rounded-md disabled:opacity-30 transition-colors"
-                                  >
-                                    <ChevronLeft className="w-4 h-4" />
-                                  </button>
-                                  <span className="text-[10px] font-medium text-neutral-500">
-                                    Page {materialPage} of {totalPages}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => setMaterialPage(p => Math.min(totalPages, p + 1))}
-                                    disabled={materialPage === totalPages}
-                                    className="p-1 hover:bg-white rounded-md disabled:opacity-30 transition-colors"
-                                  >
-                                    <ChevronRight className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              )}
-                            </>
-                          );
-                        })()}
-                      </div>
-                    </div>
-
-                    {/* Selected Materials */}
-                    <div className="md:col-span-2 space-y-3">
-                      {selectedMaterials.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center text-neutral-400 border-2 border-dashed border-black/5 rounded-2xl py-12">
-                          <Package className="w-8 h-8 mb-2 opacity-20" />
-                          <p className="text-xs">No materials selected yet.</p>
-                        </div>
-                      ) : (
-                        <div className="bg-white rounded-2xl border border-black/5 overflow-hidden">
-                          <table className="w-full text-sm">
-                            <thead className="bg-neutral-50 text-neutral-500 font-medium">
-                              <tr>
-                                <th className="px-4 py-2 text-left">Material</th>
-                                <th className="px-4 py-2 text-center">Quantity</th>
-                                <th className="px-4 py-2 text-right">Subtotal</th>
-                                <th className="px-4 py-2"></th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-black/5">
-                              {selectedMaterials.map(m => (
-                                <tr key={m.materialId}>
-                                  <td className="px-4 py-2">
-                                    <p className="font-bold text-neutral-900">{m.name}</p>
-                                    <p className="text-[10px] text-neutral-500">Rp {m.price.toLocaleString()} each</p>
-                                  </td>
-                                  <td className="px-4 py-2">
-                                    <div className="flex items-center justify-center gap-2">
-                                      <input
-                                        type="number"
-                                        min="1"
-                                        value={m.quantity}
-                                        onChange={(e) => updateMaterialQty(m.materialId, Number(e.target.value))}
-                                        className="w-16 px-2 py-1 bg-neutral-50 border border-black/5 rounded-lg text-center focus:outline-none"
-                                      />
-                                    </div>
-                                  </td>
-                                  <td className="px-4 py-2 text-right font-bold text-neutral-900">
-                                    Rp {m.subtotal.toLocaleString()}
-                                  </td>
-                                  <td className="px-4 py-2 text-right">
-                                    <button
-                                      type="button"
-                                      onClick={() => removeMaterial(m.materialId)}
-                                      className="p-1 text-red-500 hover:bg-red-50 rounded"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
               </form>
 
               <div className="p-6 border-t border-black/5 bg-neutral-50 flex items-center justify-between">
@@ -2142,7 +1958,6 @@ export default function ProjectList({ profile }: ProjectListProps) {
                   <p className="text-2xl font-black text-emerald-600">
                     Rp {(
                       (formData.activityCost || 0) + 
-                      selectedMaterials.reduce((sum, m) => sum + m.subtotal, 0) +
                       selectedJobs.reduce((sum, j) => sum + j.subtotal, 0)
                     ).toLocaleString()}
                   </p>

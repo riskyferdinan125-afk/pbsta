@@ -1,0 +1,322 @@
+import React, { useState, useEffect } from 'react';
+import { collection, query, onSnapshot, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
+import { Ticket, Technician, UserProfile } from '../types';
+import { 
+  Users, 
+  CheckCircle2, 
+  Clock, 
+  Star, 
+  TrendingUp,
+  Search,
+  Filter,
+  BarChart3,
+  Activity,
+  Briefcase
+} from 'lucide-react';
+import { motion } from 'motion/react';
+
+interface EmployeeProductivityProps {
+  profile?: UserProfile | null;
+}
+
+interface ProductivityStats {
+  technicianId: string;
+  technicianName: string;
+  completedTickets: number;
+  avgCompletionTime: number; // in minutes
+  avgRating: number;
+  inProgressTickets: number;
+  totalPoints: number;
+}
+
+export default function EmployeeProductivity({ profile }: EmployeeProductivityProps) {
+  const [stats, setStats] = useState<ProductivityStats[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState<keyof ProductivityStats>('completedTickets');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  useEffect(() => {
+    const unsubscribeTickets = onSnapshot(collection(db, 'tickets'), (ticketSnapshot) => {
+      const tickets = ticketSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket));
+      
+      onSnapshot(collection(db, 'technicians'), (techSnapshot) => {
+        const technicians = techSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Technician));
+        
+        const productivityData: ProductivityStats[] = technicians.map(tech => {
+          const techTickets = tickets.filter(t => t.technicianIds?.includes(tech.id));
+          const completed = techTickets.filter(t => t.status === 'resolved' || t.status === 'closed');
+          const inProgress = techTickets.filter(t => t.status === 'in-progress');
+          
+          const totalTime = completed.reduce((sum, t) => sum + (t.totalTimeSpent || 0), 0);
+          const totalRating = completed.reduce((sum, t) => sum + (t.rating || 0), 0);
+          const ratedCount = completed.filter(t => t.rating && t.rating > 0).length;
+          const totalPoints = techTickets.reduce((sum, t) => sum + (t.points || 0), 0);
+
+          return {
+            technicianId: tech.id,
+            technicianName: tech.name,
+            completedTickets: completed.length,
+            avgCompletionTime: completed.length > 0 ? totalTime / completed.length : 0,
+            avgRating: ratedCount > 0 ? totalRating / ratedCount : 0,
+            inProgressTickets: inProgress.length,
+            totalPoints: totalPoints
+          };
+        });
+
+        setStats(productivityData);
+        setLoading(false);
+      });
+    });
+
+    return () => {
+      unsubscribeTickets();
+    };
+  }, []);
+
+  const sortedStats = [...stats]
+    .filter(s => s.technicianName.toLowerCase().includes(searchTerm.toLowerCase()))
+    .sort((a, b) => {
+      const valA = a[sortBy];
+      const valB = b[sortBy];
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      }
+      return sortOrder === 'asc' ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
+    });
+
+  const handleSort = (key: keyof ProductivityStats) => {
+    if (sortBy === key) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(key);
+      setSortOrder('desc');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header & Filters */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h3 className="text-xl font-bold text-neutral-900">Analisis Produktivitas Petugas</h3>
+          <p className="text-sm text-neutral-500">Metrik performa dan efisiensi tim perbaikan</p>
+        </div>
+        
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+            <input
+              type="text"
+              placeholder="Cari petugas..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 pr-4 py-2 bg-white border border-black/5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 w-64"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="p-3 bg-emerald-50 rounded-2xl">
+              <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Total Selesai</p>
+              <p className="text-2xl font-black text-neutral-900">
+                {stats.reduce((sum, s) => sum + s.completedTickets, 0)}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 text-xs text-emerald-600 font-bold">
+            <TrendingUp className="w-3 h-3" />
+            <span>Tiket telah diselesaikan</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="p-3 bg-amber-50 rounded-2xl">
+              <Activity className="w-6 h-6 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Dalam Proses</p>
+              <p className="text-2xl font-black text-neutral-900">
+                {stats.reduce((sum, s) => sum + s.inProgressTickets, 0)}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 text-xs text-amber-600 font-bold">
+            <Clock className="w-3 h-3" />
+            <span>Tiket sedang dikerjakan</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="p-3 bg-blue-50 rounded-2xl">
+              <Clock className="w-6 h-6 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Rata-rata Waktu</p>
+              <p className="text-2xl font-black text-neutral-900">
+                {(() => {
+                  const total = stats.reduce((sum, s) => sum + s.avgCompletionTime, 0);
+                  const count = stats.filter(s => s.avgCompletionTime > 0).length;
+                  return count > 0 ? Math.round(total / count) : 0;
+                })()}m
+              </p>
+            </div>
+          </div>
+          <div className="text-xs text-neutral-500 font-medium">
+            Waktu penyelesaian rata-rata
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="p-3 bg-purple-50 rounded-2xl">
+              <Star className="w-6 h-6 text-purple-600" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Kepuasan</p>
+              <p className="text-2xl font-black text-neutral-900">
+                {(() => {
+                  const total = stats.reduce((sum, s) => sum + s.avgRating, 0);
+                  const count = stats.filter(s => s.avgRating > 0).length;
+                  return count > 0 ? (total / count).toFixed(1) : '0.0';
+                })()}
+              </p>
+            </div>
+          </div>
+          <div className="text-xs text-neutral-500 font-medium">
+            Skala 1-5 bintang
+          </div>
+        </div>
+      </div>
+
+      {/* Main Table */}
+      <div className="bg-white rounded-3xl border border-black/5 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-neutral-50/50 border-b border-black/5">
+                <th 
+                  className="px-6 py-4 text-xs font-bold text-neutral-500 uppercase tracking-wider cursor-pointer hover:text-emerald-600 transition-colors"
+                  onClick={() => handleSort('technicianName')}
+                >
+                  <div className="flex items-center gap-2">
+                    Petugas
+                    {sortBy === 'technicianName' && (sortOrder === 'asc' ? <TrendingUp className="w-3 h-3 rotate-180" /> : <TrendingUp className="w-3 h-3" />)}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 text-xs font-bold text-neutral-500 uppercase tracking-wider text-center cursor-pointer hover:text-emerald-600 transition-colors"
+                  onClick={() => handleSort('completedTickets')}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    Tiket Selesai
+                    {sortBy === 'completedTickets' && (sortOrder === 'asc' ? <TrendingUp className="w-3 h-3 rotate-180" /> : <TrendingUp className="w-3 h-3" />)}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 text-xs font-bold text-neutral-500 uppercase tracking-wider text-center cursor-pointer hover:text-emerald-600 transition-colors"
+                  onClick={() => handleSort('inProgressTickets')}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    Dalam Proses
+                    {sortBy === 'inProgressTickets' && (sortOrder === 'asc' ? <TrendingUp className="w-3 h-3 rotate-180" /> : <TrendingUp className="w-3 h-3" />)}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 text-xs font-bold text-neutral-500 uppercase tracking-wider text-center cursor-pointer hover:text-emerald-600 transition-colors"
+                  onClick={() => handleSort('avgCompletionTime')}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    Rata-rata Waktu
+                    {sortBy === 'avgCompletionTime' && (sortOrder === 'asc' ? <TrendingUp className="w-3 h-3 rotate-180" /> : <TrendingUp className="w-3 h-3" />)}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 text-xs font-bold text-neutral-500 uppercase tracking-wider text-center cursor-pointer hover:text-emerald-600 transition-colors"
+                  onClick={() => handleSort('avgRating')}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    Kepuasan
+                    {sortBy === 'avgRating' && (sortOrder === 'asc' ? <TrendingUp className="w-3 h-3 rotate-180" /> : <TrendingUp className="w-3 h-3" />)}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 text-xs font-bold text-neutral-500 uppercase tracking-wider text-center cursor-pointer hover:text-emerald-600 transition-colors"
+                  onClick={() => handleSort('totalPoints')}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    Total Poin
+                    {sortBy === 'totalPoints' && (sortOrder === 'asc' ? <TrendingUp className="w-3 h-3 rotate-180" /> : <TrendingUp className="w-3 h-3" />)}
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-black/5">
+              {sortedStats.map((row) => (
+                <motion.tr 
+                  layout
+                  key={row.technicianId}
+                  className="hover:bg-neutral-50/50 transition-colors group"
+                >
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-xs">
+                        {row.technicianName.charAt(0)}
+                      </div>
+                      <span className="font-bold text-neutral-900">{row.technicianName}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700">
+                      {row.completedTickets}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700">
+                      {row.inProgressTickets}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <div className="flex items-center justify-center gap-1.5 text-neutral-600 font-medium">
+                      <Clock className="w-3 h-3" />
+                      {Math.round(row.avgCompletionTime)}m
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <div className="flex items-center justify-center gap-1 text-amber-500 font-bold">
+                      <Star className="w-3 h-3 fill-current" />
+                      {row.avgRating.toFixed(1)}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <div className="font-black text-emerald-600">
+                      {row.totalPoints.toLocaleString()}
+                    </div>
+                  </td>
+                </motion.tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}

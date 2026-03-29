@@ -170,42 +170,11 @@ export default function ProjectReport({ project, onClose }: ProjectReportProps) 
             </div>
           )}
 
-          {/* Materials Section */}
-          {project.materials && project.materials.length > 0 && (
-            <div className="mb-8">
-              <h3 className="text-sm font-bold bg-neutral-100 border border-black p-2 uppercase mb-4">MATERIAL TERPASANG</h3>
-              <table className="w-full border-collapse border border-black text-[10px]">
-                <thead>
-                  <tr className="bg-neutral-50">
-                    <th className="border border-black p-1 text-left">NAMA MATERIAL</th>
-                    <th className="border border-black p-1 text-center">QTY</th>
-                    <th className="border border-black p-1 text-right">HARGA SATUAN</th>
-                    <th className="border border-black p-1 text-right">SUBTOTAL</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {project.materials.map((m, idx) => (
-                    <tr key={idx}>
-                      <td className="border border-black p-1">{m.name}</td>
-                      <td className="border border-black p-1 text-center">{m.quantity}</td>
-                      <td className="border border-black p-1 text-right">Rp {m.price.toLocaleString()}</td>
-                      <td className="border border-black p-1 text-right">Rp {m.subtotal.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                  <tr className="bg-neutral-50 font-bold">
-                    <td colSpan={3} className="border border-black p-1 text-right">TOTAL MATERIAL</td>
-                    <td className="border border-black p-1 text-right text-emerald-700">Rp {(project.totalMaterialCost || 0).toLocaleString()}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          )}
-
           {/* Grand Total */}
           <div className="mb-8 flex justify-end">
             <div className="border-2 border-black p-4 bg-neutral-50">
               <p className="text-[10px] font-bold text-neutral-500 uppercase">Grand Total Cost</p>
-              <p className="text-xl font-black text-emerald-600">Rp {(project.totalCost || 0).toLocaleString()}</p>
+              <p className="text-xl font-black text-emerald-600">Rp {(project.totalJobCost || 0).toLocaleString()}</p>
             </div>
           </div>
         </div>
