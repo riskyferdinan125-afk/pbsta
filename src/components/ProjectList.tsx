@@ -312,12 +312,36 @@ export default function ProjectList({ profile }: ProjectListProps) {
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 14;
 
+    const telkomAksesLogo = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Telkom_Akses_logo.svg/1200px-Telkom_Akses_logo.svg.png";
+    const telkomIndonesiaLogo = "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/Telkom_Indonesia_2013.svg/1200px-Telkom_Indonesia_2013.svg.png";
+    
+    let logoAksesData: any = null;
+    let logoTelkomData: any = null;
+
+    try {
+      logoAksesData = await getImageData(telkomAksesLogo);
+      logoTelkomData = await getImageData(telkomIndonesiaLogo);
+    } catch (e) {
+      console.error("Failed to load header logos", e);
+    }
+
     const drawHeader = (pageTitle: string, pageNum: number, totalPages: string) => {
       // Logos
-      doc.setFontSize(10);
-      doc.setTextColor(150);
-      doc.text("TelkomAkses", margin, 15);
-      doc.text("Telkom Indonesia", pageWidth - margin - 30, 15);
+      if (logoAksesData) {
+        doc.addImage(logoAksesData, 'PNG', margin, 7, 30, 10);
+      } else {
+        doc.setFontSize(10);
+        doc.setTextColor(150);
+        doc.text("TelkomAkses", margin, 15);
+      }
+
+      if (logoTelkomData) {
+        doc.addImage(logoTelkomData, 'PNG', pageWidth - margin - 25, 7, 25, 10);
+      } else {
+        doc.setFontSize(10);
+        doc.setTextColor(150);
+        doc.text("Telkom Indonesia", pageWidth - margin - 30, 15);
+      }
 
       // Metadata Section
       doc.setFontSize(9);
