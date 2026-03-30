@@ -30,6 +30,7 @@
     "jspdf-autotable": "^5.0.7",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "node-fetch": "^3.3.2",
     "node-telegram-bot-api": "^0.67.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.0.0",

@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import TelegramBot from 'node-telegram-bot-api';
+import fetch from 'node-fetch';
 
 enum OperationType {
   CREATE = 'create',
@@ -1174,6 +1175,51 @@ app.get('/api/telegram-photo/:fileId', async (req, res) => {
   } catch (e) {
     console.error("Error fetching telegram photo:", e);
     res.status(404).send('Photo not found');
+  }
+});
+
+// General image proxy to bypass CORS for PDF generation
+app.get('/api/proxy-image', async (req, res) => {
+  let imageUrl = req.query.url as string;
+  if (!imageUrl) return res.status(400).send('URL is required');
+  
+  // Handle relative URLs (e.g. from /api/telegram-photo)
+  if (imageUrl.startsWith('/')) {
+    const protocol = req.secure ? 'https' : 'http';
+    imageUrl = `${protocol}://${req.headers.host}${imageUrl}`;
+  }
+  
+  console.log(`[Proxy] Fetching image: ${imageUrl}`);
+  
+  try {
+    const response = await fetch(imageUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+      },
+      redirect: 'follow'
+    });
+    
+    if (!response.ok) {
+      console.error(`[Proxy] Failed to fetch image: ${response.status} ${response.statusText} for URL: ${imageUrl}`);
+      throw new Error(`Failed to fetch image: ${response.statusText}`);
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType) {
+      res.setHeader('Content-Type', contentType);
+    } else {
+      res.setHeader('Content-Type', 'image/jpeg'); // Fallback
+    }
+    
+    // Cache for 1 hour
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    
+    const buffer = await response.arrayBuffer();
+    res.send(Buffer.from(buffer));
+  } catch (e) {
+    console.error(`[Proxy] Error proxying image ${imageUrl}:`, e);
+    res.status(500).send('Error fetching image');
   }
 });
 

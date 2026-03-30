@@ -193,7 +193,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
       { title: 'SESUDAH', stages: ['Penaikan UC', 'Sesudah'] },
       { title: 'HASIL UKUR', stages: ['Hasil ukur'] },
       { title: 'BERITA ACARA', stages: ['Berita acara'] },
-      { title: 'AS BUILT DRAWING', stages: ['As built drawing'] }
+      { title: 'AS BUILT DRAWING SMALL WORLD', stages: ['As built drawing'] }
     ];
 
     const evidenceData: any[][] = [];
@@ -234,7 +234,6 @@ export default function ProjectList({ profile }: ProjectListProps) {
       ...boqFooter,
       ...evidenceData,
       [],
-      ["PENGESAHAN LAPORAN"],
       [],
       ["PT TELKOM INFRASTRUKTUR INDONESIA", "", "PT TELKOM AKSES"],
       ["Waspang", "", "Pelaksana Harian"],
@@ -265,21 +264,45 @@ export default function ProjectList({ profile }: ProjectListProps) {
     showToast("Project exported to Excel", "success");
   };
 
-  const getBase64ImageFromURL = (url: string): Promise<string> => {
+  const getImageData = (url: string): Promise<HTMLImageElement | string> => {
     return new Promise((resolve, reject) => {
+      if (!url) {
+        reject(new Error("URL is empty"));
+        return;
+      }
+      
+      if (url.startsWith('data:')) {
+        resolve(url);
+        return;
+      }
+
+      // If it looks like a Telegram file_id (no http and no slash)
+      let finalUrl = url;
+      if (!url.startsWith('http') && !url.includes('/')) {
+        finalUrl = `${window.location.origin}/api/telegram-photo/${url}`;
+      }
+
+      // Use server-side proxy to bypass CORS issues for PDF generation
+      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(finalUrl)}`;
+
       const img = new Image();
-      img.setAttribute('crossOrigin', 'anonymous');
+      
+      const timeout = setTimeout(() => {
+        img.src = ""; // Stop loading
+        reject(new Error("Image load timeout"));
+      }, 20000); // 20 second timeout
+
       img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0);
-        const dataURL = canvas.toDataURL('image/jpeg');
-        resolve(dataURL);
+        clearTimeout(timeout);
+        resolve(img);
       };
-      img.onerror = error => reject(error);
-      img.src = url;
+
+      img.onerror = () => {
+        clearTimeout(timeout);
+        reject(new Error("Image load error"));
+      };
+
+      img.src = proxyUrl;
     });
   };
 
@@ -289,12 +312,36 @@ export default function ProjectList({ profile }: ProjectListProps) {
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 14;
 
-    const drawHeader = (pageTitle: string, pageNum: number, totalPages: number) => {
+    const telkomAksesLogo = "https://telkomakses.co.id/wp-content/uploads/2022/07/Logo-Telkom-Akses-1.png";
+    const telkomIndonesiaLogo = "https://www.telkom.co.id/data/image_upload/page/1594112895830_compress_logo%20telkom.png";
+    
+    let logoAksesData: any = null;
+    let logoTelkomData: any = null;
+
+    try {
+      logoAksesData = await getImageData(telkomAksesLogo);
+      logoTelkomData = await getImageData(telkomIndonesiaLogo);
+    } catch (e) {
+      console.error("Failed to load header logos", e);
+    }
+
+    const drawHeader = (pageTitle: string, pageNum: number, totalPages: string) => {
       // Logos
-      doc.setFontSize(10);
-      doc.setTextColor(150);
-      doc.text("TelkomAkses", margin, 15);
-      doc.text("Telkom Indonesia", pageWidth - margin - 30, 15);
+      if (logoAksesData) {
+        doc.addImage(logoAksesData, 'PNG', margin, 7, 30, 10);
+      } else {
+        doc.setFontSize(10);
+        doc.setTextColor(150);
+        doc.text("TelkomAkses", margin, 15);
+      }
+
+      if (logoTelkomData) {
+        doc.addImage(logoTelkomData, 'PNG', pageWidth - margin - 25, 7, 25, 10);
+      } else {
+        doc.setFontSize(10);
+        doc.setTextColor(150);
+        doc.text("Telkom Indonesia", pageWidth - margin - 30, 15);
+      }
 
       // Metadata Section
       doc.setFontSize(9);
@@ -350,7 +397,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
         { title: 'SESUDAH', stages: ['Penaikan UC', 'Sesudah'] },
         { title: 'HASIL UKUR', stages: ['Hasil ukur'] },
         { title: 'BERITA ACARA', stages: ['Berita acara'] },
-        { title: 'AS BUILT DRAWING', stages: ['As built drawing'] }
+        { title: 'AS BUILT DRAWING SMALL WORLD', stages: ['As built drawing'] }
       ];
 
       const activeSections = sections.filter(s => {
@@ -359,12 +406,11 @@ export default function ProjectList({ profile }: ProjectListProps) {
         return photos.length > 0 || hasInseraIds;
       });
 
-      const totalPages = 1 + activeSections.length + 1; // BOQ + Evidence Pages + Signatures
+      const totalPagesExp = "{total_pages_count_string}";
       let pageNum = 1;
 
       // Page 1: BOQ REKONSILIASI
-      let currentY = drawHeader("BOQ REKONSILIASI", pageNum, totalPages);
-      pageNum++;
+      let currentY = drawHeader("BOQ REKONSILIASI", pageNum, totalPagesExp);
       
       const boqData = [
         ...(project.jobs || []).map(j => [
@@ -402,8 +448,8 @@ export default function ProjectList({ profile }: ProjectListProps) {
         const hasInseraIds = section.title === 'TIKET INSERA' && project.inseraTicketIds && project.inseraTicketIds.length > 0;
         
         doc.addPage();
-        let y = drawHeader(section.title, pageNum, totalPages);
         pageNum++;
+        let y = drawHeader(section.title, pageNum, totalPagesExp);
 
         let photoY = y + 10;
 
@@ -423,8 +469,18 @@ export default function ProjectList({ profile }: ProjectListProps) {
 
         for (let i = 0; i < photos.length; i++) {
           try {
-            const base64 = await getBase64ImageFromURL(photos[i].photoUrl);
-            doc.addImage(base64, 'JPEG', photoX, photoY, imgWidth, imgHeight);
+            const img = await getImageData(photos[i].photoUrl);
+            
+            // Check if we need a new page BEFORE adding the image
+            if (photoY + imgHeight + 15 > pageHeight - 20) {
+              doc.addPage();
+              pageNum++;
+              y = drawHeader(section.title, pageNum, totalPagesExp);
+              photoX = margin;
+              photoY = y + 10;
+            }
+
+            doc.addImage(img as any, 'JPEG', photoX, photoY, imgWidth, imgHeight);
             
             // Photo Label & Metadata
             doc.setFontSize(8);
@@ -443,42 +499,71 @@ export default function ProjectList({ profile }: ProjectListProps) {
 
             if ((i + 1) % 2 === 0) {
               photoX = margin;
-              photoY += imgHeight + 20;
+              photoY += imgHeight + 25; // Increased spacing
             } else {
               photoX += imgWidth + margin;
             }
-
-            // New page if needed
-            if (photoY + imgHeight > pageHeight - 30 && i < photos.length - 1) {
-              doc.addPage();
-              y = drawHeader(section.title, pageNum, totalPages);
-              pageNum++;
-              photoX = margin;
-              photoY = y + 10;
-            }
           } catch (err) {
             console.error("Error adding image to PDF:", err);
+            // Even if image fails, show the metadata placeholder
+            doc.setFontSize(8);
+            doc.setTextColor(200);
+            doc.rect(photoX, photoY, imgWidth, imgHeight, 'D');
+            doc.text("Image Failed to Load", photoX + imgWidth/2, photoY + imgHeight/2, { align: "center" });
+            doc.setTextColor(0);
+            
+            doc.setFontSize(8);
+            doc.setFont("helvetica", "bold");
+            doc.text(`(${i + 1}) ${photos[i].stage}`, photoX, photoY + imgHeight + 5);
+            
+            if ((i + 1) % 2 === 0) {
+              photoX = margin;
+              photoY += imgHeight + 25;
+            } else {
+              photoX += imgWidth + margin;
+            }
           }
+        }
+
+        // Add signatures directly below the last active section
+        const isLastSection = activeSections.indexOf(section) === activeSections.length - 1;
+        if (isLastSection) {
+          let sigY = photoY;
+          if (photos.length > 0 && photos.length % 2 !== 0) {
+            sigY += imgHeight + 25;
+          } else {
+            sigY += 10;
+          }
+
+          if (sigY + 60 > pageHeight - 20) {
+            doc.addPage();
+            pageNum++;
+            drawHeader(section.title, pageNum, totalPagesExp);
+            sigY = 60;
+          }
+          
+          doc.setFontSize(10);
+          doc.setFont("helvetica", "bold");
+          
+          doc.text("PT TELKOM INFRASTRUKTUR INDONESIA", margin + 40, sigY, { align: "center" });
+          doc.text("Waspang", margin + 40, sigY + 5, { align: "center" });
+          
+          doc.text("PT TELKOM AKSES", pageWidth - margin - 40, sigY, { align: "center" });
+          doc.text("Pelaksana Harian", pageWidth - margin - 40, sigY + 5, { align: "center" });
+
+          doc.setFont("helvetica", "normal");
+          doc.text("__________________________", margin + 40, sigY + 40, { align: "center" });
+          doc.text("__________________________", pageWidth - margin - 40, sigY + 40, { align: "center" });
+
+          doc.text("NIK.", margin + 40, sigY + 45, { align: "center" });
+          doc.text("NIK.", pageWidth - margin - 40, sigY + 45, { align: "center" });
         }
       }
 
-      // Last Page: Signatures
-      doc.addPage();
-      drawHeader("PENGESAHAN LAPORAN", pageNum, totalPages);
-      
-      const sigY = pageHeight - 60;
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "bold");
-      
-      doc.text("PT TELKOM INFRASTRUKTUR INDONESIA", margin + 20, sigY, { align: "center" });
-      doc.text("Waspang", margin + 20, sigY + 5, { align: "center" });
-      
-      doc.text("PT TELKOM AKSES", pageWidth - margin - 40, sigY, { align: "center" });
-      doc.text("Pelaksana Harian", pageWidth - margin - 40, sigY + 5, { align: "center" });
-
-      doc.setFont("helvetica", "normal");
-      doc.text("__________________________", margin + 20, sigY + 30, { align: "center" });
-      doc.text("__________________________", pageWidth - margin - 40, sigY + 30, { align: "center" });
+      // Replace total pages placeholder
+      if (typeof doc.putTotalPages === 'function') {
+        doc.putTotalPages(totalPagesExp);
+      }
 
       doc.save(`Project_Report_${project.pid}.pdf`);
       showToast("Project report generated successfully", "success");
