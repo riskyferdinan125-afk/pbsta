@@ -312,36 +312,12 @@ export default function ProjectList({ profile }: ProjectListProps) {
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 14;
 
-    const telkomAksesLogo = "https://telkomakses.co.id/wp-content/uploads/2022/07/Logo-Telkom-Akses-1.png";
-    const telkomIndonesiaLogo = "https://www.telkom.co.id/data/image_upload/page/1594112895830_compress_logo%20telkom.png";
-    
-    let logoAksesData: any = null;
-    let logoTelkomData: any = null;
-
-    try {
-      logoAksesData = await getImageData(telkomAksesLogo);
-      logoTelkomData = await getImageData(telkomIndonesiaLogo);
-    } catch (e) {
-      console.error("Failed to load header logos", e);
-    }
-
     const drawHeader = (pageTitle: string, pageNum: number, totalPages: string) => {
       // Logos
-      if (logoAksesData) {
-        doc.addImage(logoAksesData, 'PNG', margin, 7, 30, 10);
-      } else {
-        doc.setFontSize(10);
-        doc.setTextColor(150);
-        doc.text("TelkomAkses", margin, 15);
-      }
-
-      if (logoTelkomData) {
-        doc.addImage(logoTelkomData, 'PNG', pageWidth - margin - 25, 7, 25, 10);
-      } else {
-        doc.setFontSize(10);
-        doc.setTextColor(150);
-        doc.text("Telkom Indonesia", pageWidth - margin - 30, 15);
-      }
+      doc.setFontSize(10);
+      doc.setTextColor(150);
+      doc.text("TelkomAkses", margin, 15);
+      doc.text("Telkom Indonesia", pageWidth - margin - 30, 15);
 
       // Metadata Section
       doc.setFontSize(9);
