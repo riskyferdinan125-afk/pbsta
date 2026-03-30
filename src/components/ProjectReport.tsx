@@ -80,72 +80,39 @@ export default function ProjectReport({ project, onClose }: ProjectReportProps) 
           </div>
         </div>
 
-        {/* Project Details */}
-        <div className="grid grid-cols-[150px_1fr] gap-y-2 text-sm mb-8">
-          <div className="font-bold uppercase">PROYEK</div>
-          <div>: {project.projectName || project.description}</div>
-          
-          <div className="font-bold uppercase">NO. KONTRAK</div>
-          <div>: {project.contractNo || '-'}</div>
-          
-          <div className="font-bold uppercase">NO. SURAT PESANAN</div>
-          <div>: {project.orderNo || '-'}</div>
-          
-          <div className="font-bold uppercase">WITEL</div>
-          <div>: {project.witel || 'MADIUN'}</div>
-          
-          <div className="font-bold uppercase">TIKET / LOKASI</div>
-          <div>: {project.ticketId} - {project.location}</div>
-          
-          <div className="font-bold uppercase">PELAKSANA</div>
-          <div>: {project.partner || 'PT TELKOM AKSES'}</div>
+        {/* Project Details & BOQ Section (Page 1) */}
+        <div className="space-y-8">
+          <div className="grid grid-cols-[150px_1fr] gap-y-2 text-sm">
+            <div className="font-bold uppercase">PROYEK</div>
+            <div>: {project.projectName || project.description}</div>
+            
+            <div className="font-bold uppercase">NO. KONTRAK</div>
+            <div>: {project.contractNo || '-'}</div>
+            
+            <div className="font-bold uppercase">NO. SURAT PESANAN</div>
+            <div>: {project.orderNo || '-'}</div>
+            
+            <div className="font-bold uppercase">WITEL</div>
+            <div>: {project.witel || 'MADIUN'}</div>
+            
+            <div className="font-bold uppercase">TIKET / LOKASI</div>
+            <div>: {project.ticketId} - {project.location}</div>
+            
+            <div className="font-bold uppercase">PELAKSANA</div>
+            <div>: {project.partner || 'PT TELKOM AKSES'}</div>
 
-          {project.inseraTicketIds && project.inseraTicketIds.length > 0 && (
-            <>
-              <div className="font-bold uppercase">TIKET INSERA</div>
-              <div className="flex flex-wrap gap-2">
-                : {project.inseraTicketIds.join(', ')}
-              </div>
-            </>
-          )}
-        </div>
-
-        <hr className="border-black border-t-2 mb-8" />
-
-        {/* Evidence Sections - Each on new page in print if needed */}
-        <div className="space-y-12">
-          {['Initial', 'Penggalian', 'Tanam tiang', 'Pengecoran', 'Penarikan kabel', 'Pemasangan aksesoris', 'Penyambungan core', 'Pemasangan UC', 'Penaikan UC', 'Berita acara'].map((stage) => {
-            const stagePhotos = getEvidenceByStage(stage as any);
-            if (stagePhotos.length === 0) return null;
-
-            return (
-              <section key={stage} className="page-break-before">
-                <div className="bg-neutral-100 border border-black p-2 text-center font-bold uppercase mb-4">
-                  {stage === 'Initial' ? 'SEBELUM' : stage === 'Penaikan UC' ? 'SESUDAH' : stage}
+            {project.inseraTicketIds && project.inseraTicketIds.length > 0 && (
+              <>
+                <div className="font-bold uppercase">TIKET INSERA</div>
+                <div className="flex flex-wrap gap-2">
+                  : {project.inseraTicketIds.join(', ')}
                 </div>
-                <div className="grid grid-cols-2 gap-6">
-                  {stagePhotos.map((item, idx) => (
-                    <div key={idx} className="space-y-2 border border-black/10 p-2 rounded bg-neutral-50/30">
-                      <div className="aspect-[4/3] border border-black overflow-hidden bg-white">
-                        <img src={item.photoUrl} alt={stage} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex justify-between items-center">
-                          <p className="text-[10px] font-bold">({idx + 1}) {stage}</p>
-                          <p className="text-[8px] text-neutral-500">{formatDate(item.timestamp)}</p>
-                        </div>
-                        {item.caption && <p className="text-[9px] text-neutral-700 font-medium">{item.caption}</p>}
-                        <p className="text-[8px] text-neutral-400">Reported by: {item.reportedBy}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            );
-          })}
-        </div>
+              </>
+            )}
+          </div>
 
-        <div className="page-break-before mt-12">
+          <hr className="border-black border-t-2" />
+
           {/* BOQ Section */}
           {project.jobs && project.jobs.length > 0 && (
             <div className="mb-8">
@@ -184,6 +151,53 @@ export default function ProjectReport({ project, onClose }: ProjectReportProps) 
               </table>
             </div>
           )}
+        </div>
+
+        {/* Evidence Sections - Organized by requested sequence */}
+        <div className="space-y-12">
+          {[
+            { title: 'TIKET INSERA', stages: ['Tiket Insera'] },
+            { title: 'SEBELUM', stages: ['Initial', 'Sebelum'] },
+            { title: 'PROGRESS', stages: ['Penggalian', 'Tanam tiang', 'Pengecoran', 'Penarikan kabel', 'Pemasangan aksesoris', 'Penyambungan core', 'Pemasangan UC'] },
+            { title: 'SESUDAH', stages: ['Penaikan UC', 'Sesudah'] },
+            { title: 'HASIL UKUR', stages: ['Hasil ukur'] },
+            { title: 'BERITA ACARA', stages: ['Berita acara'] },
+            { title: 'AS BUILT DRAWING', stages: ['As built drawing'] }
+          ].map((section) => {
+            const sectionPhotos = section.stages.flatMap(stage => getEvidenceByStage(stage as any));
+            if (sectionPhotos.length === 0) return null;
+
+            return (
+              <section key={section.title} className="page-break-before">
+                <div className="bg-neutral-100 border border-black p-2 text-center font-bold uppercase mb-4">
+                  {section.title}
+                </div>
+                {section.title === 'TIKET INSERA' && project.inseraTicketIds && project.inseraTicketIds.length > 0 && (
+                  <div className="mb-4 text-sm">
+                    <span className="font-bold">TICKET IDS: </span>
+                    <span>{project.inseraTicketIds.join(', ')}</span>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-6">
+                  {sectionPhotos.map((item, idx) => (
+                    <div key={idx} className="space-y-2 border border-black/10 p-2 rounded bg-neutral-50/30">
+                      <div className="aspect-[4/3] border border-black overflow-hidden bg-white">
+                        <img src={item.photoUrl} alt={section.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center">
+                          <p className="text-[10px] font-bold">({idx + 1}) {item.stage}</p>
+                          <p className="text-[8px] text-neutral-500">{formatDate(item.timestamp)}</p>
+                        </div>
+                        {item.caption && <p className="text-[9px] text-neutral-700 font-medium">{item.caption}</p>}
+                        <p className="text-[8px] text-neutral-400">Reported by: {item.reportedBy}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            );
+          })}
         </div>
 
         {/* Footer Signatures */}

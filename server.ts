@@ -580,7 +580,7 @@ async function initTelegramBot() {
           const projectData = projectSnap.data();
 
           const stages = [
-            { text: '📸 Kondisi Awal', data: 'Initial' },
+            { text: '📸 Sebelum', data: 'Sebelum' },
             { text: '⛏️ Penggalian', data: 'Penggalian' },
             { text: '🏗️ Tanam Tiang', data: 'Tanam tiang' },
             { text: '🧱 Pengecoran', data: 'Pengecoran' },
@@ -589,9 +589,11 @@ async function initTelegramBot() {
             { text: '🔌 Sambung Core', data: 'Penyambungan core' },
             { text: '📦 Pasang UC', data: 'Pemasangan UC' },
             { text: '🚀 Naik UC', data: 'Penaikan UC' },
+            { text: '✅ Sesudah', data: 'Sesudah' },
             { text: '📏 Hasil Ukur', data: 'Hasil ukur' },
             { text: '📐 As Built Drawing', data: 'As built drawing' },
-            { text: '📄 Berita Acara', data: 'Berita acara' }
+            { text: '📄 Berita Acara', data: 'Berita acara' },
+            { text: '🎫 Tiket Insera', data: 'Tiket Insera' }
           ];
 
           const keyboard = [];

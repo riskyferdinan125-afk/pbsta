@@ -102,16 +102,14 @@ export default function ProjectList({ profile }: ProjectListProps) {
 
   // Helper function to get all evidence for a project
   const getProjectEvidence = (project: Project) => {
-    return [
-      ...(project.photos?.map(url => ({ 
-        photoUrl: url, 
-        stage: 'Legacy' as any, 
-        reportedBy: 'System', 
-        timestamp: project.createdAt,
-        caption: '' 
-      })) || []),
-      ...(project.evidence || [])
-    ];
+    const legacyPhotos = project.photos?.map(url => ({ 
+      photoUrl: url, 
+      stage: 'Initial' as any, 
+      reportedBy: 'System', 
+      timestamp: project.createdAt,
+      caption: 'Legacy Photo' 
+    })) || [];
+    return [...legacyPhotos, ...(project.evidence || [])];
   };
 
   const allEvidence = activeProjectForGallery ? getProjectEvidence(activeProjectForGallery) : [];
@@ -161,10 +159,15 @@ export default function ProjectList({ profile }: ProjectListProps) {
       ["WITEL", ": " + (project.witel || "-")],
       ["TIKET / LOKASI", ": " + (project.ticketId ? `${project.ticketId} - ${project.location}` : project.location || "-")],
       ["PELAKSANA", ": " + (project.partner || "-")],
-      ["STATUS", ": " + project.status.toUpperCase()],
-      ["TANGGAL DIBUAT", ": " + (project.createdAt ? project.createdAt.toDate().toLocaleString('id-ID') : "-")],
-      []
     ];
+
+    if (project.inseraTicketIds && project.inseraTicketIds.length > 0) {
+      header.push(["TIKET INSERA", ": " + project.inseraTicketIds.join(', ')]);
+    }
+
+    header.push(["STATUS", ": " + project.status.toUpperCase()]);
+    header.push(["TANGGAL DIBUAT", ": " + (project.createdAt ? project.createdAt.toDate().toLocaleString('id-ID') : "-")]);
+    header.push([]);
 
     // BOQ Section
     const boqHeader = [["BOQ REKONSILIASI", "", "", "", ""]];
@@ -176,34 +179,72 @@ export default function ProjectList({ profile }: ProjectListProps) {
       j.price,
       j.subtotal
     ]);
-    const boqFooter = [["", "", "", "TOTAL BOQ", project.totalJobCost || 0], []];
+    const boqFooter = [["", "", "", "TOTAL BOQ", project.totalJobCost || 0]];
+    if (project.activityCost && project.activityCost > 0) {
+      boqFooter.push(["", "", "", "BIAYA AKTIVITAS", project.activityCost]);
+    }
+    boqFooter.push([]);
 
-    // Grand Total
-    const grandTotal = [["", "", "GRAND TOTAL COST", project.totalJobCost || 0], []];
+    // Evidence Section - Organized by requested sequence
+    const sections = [
+      { title: 'TIKET INSERA', stages: ['Tiket Insera'] },
+      { title: 'SEBELUM', stages: ['Initial', 'Sebelum'] },
+      { title: 'PROGRESS', stages: ['Penggalian', 'Tanam tiang', 'Pengecoran', 'Penarikan kabel', 'Pemasangan aksesoris', 'Penyambungan core', 'Pemasangan UC'] },
+      { title: 'SESUDAH', stages: ['Penaikan UC', 'Sesudah'] },
+      { title: 'HASIL UKUR', stages: ['Hasil ukur'] },
+      { title: 'BERITA ACARA', stages: ['Berita acara'] },
+      { title: 'AS BUILT DRAWING', stages: ['As built drawing'] }
+    ];
 
-    // Evidence Section
-    const evidenceHeader = [["EVIDEN FOTO", "", "", ""]];
-    const evidenceSubHeader = [["STAGE", "CAPTION", "TIMESTAMP", "PHOTO URL"]];
+    const evidenceData: any[][] = [];
     const projectEvidence = getProjectEvidence(project);
-    const evidenceData = projectEvidence.map(e => [
-      e.stage,
-      e.caption || "-",
-      e.timestamp ? e.timestamp.toDate().toLocaleString('id-ID') : "-",
-      e.photoUrl
-    ]);
+
+    sections.forEach(section => {
+      const sectionPhotos = projectEvidence.filter(e => section.stages.includes(e.stage));
+      const hasInseraIds = section.title === 'TIKET INSERA' && project.inseraTicketIds && project.inseraTicketIds.length > 0;
+      
+      if (sectionPhotos.length > 0 || hasInseraIds) {
+        evidenceData.push([[section.title, "", "", ""]][0]);
+        
+        if (hasInseraIds) {
+          evidenceData.push([["TICKET IDS", project.inseraTicketIds!.join(', '), "", ""]][0]);
+        }
+
+        if (sectionPhotos.length > 0) {
+          evidenceData.push([["STAGE", "CAPTION", "TIMESTAMP", "PHOTO URL"]][0]);
+          sectionPhotos.forEach(e => {
+            evidenceData.push([
+              e.stage,
+              e.caption || "-",
+              e.timestamp ? e.timestamp.toDate().toLocaleString('id-ID') : "-",
+              e.photoUrl
+            ]);
+          });
+        }
+        evidenceData.push([]);
+      }
+    });
 
     // Combine All
     const fullData = [
       ...header,
-      ...evidenceHeader,
-      ...evidenceSubHeader,
-      ...evidenceData,
-      [],
       ...boqHeader,
       ...boqSubHeader,
       ...boqData,
       ...boqFooter,
-      ...grandTotal
+      ...evidenceData,
+      [],
+      ["PENGESAHAN LAPORAN"],
+      [],
+      ["PT TELKOM INFRASTRUKTUR INDONESIA", "", "PT TELKOM AKSES"],
+      ["Waspang", "", "Pelaksana Harian"],
+      [],
+      [],
+      [],
+      ["__________________________", "", "__________________________"],
+      ["NIK.", "", "NIK."],
+      [],
+      ["Created by AIS 4.0 (RAM)"]
     ];
     
     const ws = XLSX.utils.aoa_to_sheet(fullData);
@@ -269,6 +310,10 @@ export default function ProjectList({ profile }: ProjectListProps) {
         ["PELAKSANA", ": " + (project.partner || "-")]
       ];
 
+      if (project.inseraTicketIds && project.inseraTicketIds.length > 0) {
+        metadata.push(["TIKET INSERA", ": " + project.inseraTicketIds.join(', ')]);
+      }
+
       let y = 25;
       metadata.forEach(([label, value]) => {
         doc.text(label, margin, y);
@@ -289,7 +334,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
       // Footer
       doc.setFontSize(8);
       doc.setTextColor(150);
-      doc.text(`Halaman ${pageNum}/${totalPages} Created by AISS 4.0 (RAM)`, pageWidth / 2, pageHeight - 10, { align: "center" });
+      doc.text(`Halaman ${pageNum}/${totalPages} Created by AIS 4.0 (RAM)`, pageWidth / 2, pageHeight - 10, { align: "center" });
       
       return y + 15;
     };
@@ -297,79 +342,29 @@ export default function ProjectList({ profile }: ProjectListProps) {
     try {
       showToast("Preparing PDF report...", "info");
       
-      // Photo Pages
       const projectEvidence = getProjectEvidence(project);
-      const stages = ['Initial', 'Penggalian', 'Tanam tiang', 'Pengecoran', 'Penarikan kabel', 'Pemasangan aksesoris', 'Penyambungan core', 'Pemasangan UC', 'Penaikan UC', 'Berita acara'];
-      const stageLabels: Record<string, string> = {
-        'Initial': 'SEBELUM',
-        'Penaikan UC': 'SESUDAH'
-      };
+      const sections = [
+        { title: 'TIKET INSERA', stages: ['Tiket Insera'] },
+        { title: 'SEBELUM', stages: ['Initial', 'Sebelum'] },
+        { title: 'PROGRESS', stages: ['Penggalian', 'Tanam tiang', 'Pengecoran', 'Penarikan kabel', 'Pemasangan aksesoris', 'Penyambungan core', 'Pemasangan UC'] },
+        { title: 'SESUDAH', stages: ['Penaikan UC', 'Sesudah'] },
+        { title: 'HASIL UKUR', stages: ['Hasil ukur'] },
+        { title: 'BERITA ACARA', stages: ['Berita acara'] },
+        { title: 'AS BUILT DRAWING', stages: ['As built drawing'] }
+      ];
 
+      const activeSections = sections.filter(s => {
+        const photos = projectEvidence.filter(e => s.stages.includes(e.stage));
+        const hasInseraIds = s.title === 'TIKET INSERA' && project.inseraTicketIds && project.inseraTicketIds.length > 0;
+        return photos.length > 0 || hasInseraIds;
+      });
+
+      const totalPages = 1 + activeSections.length + 1; // BOQ + Evidence Pages + Signatures
       let pageNum = 1;
-      for (const stage of stages) {
-        const photos = projectEvidence.filter(e => e.stage === stage);
-        if (photos.length === 0) continue;
 
-        if (pageNum > 1) doc.addPage();
-        let y = drawHeader(stageLabels[stage] || stage.toUpperCase(), pageNum, 10);
-        pageNum++;
-
-        // Draw photos in a grid (2 per row)
-        const imgWidth = (pageWidth - (margin * 3)) / 2;
-        const imgHeight = imgWidth * 0.75;
-        let photoX = margin;
-        let photoY = y + 10;
-
-        for (let i = 0; i < photos.length; i++) {
-          try {
-            const base64 = await getBase64ImageFromURL(photos[i].photoUrl);
-            doc.addImage(base64, 'JPEG', photoX, photoY, imgWidth, imgHeight);
-            
-            // Photo Label & Metadata
-            doc.setFontSize(8);
-            doc.setFont("helvetica", "bold");
-            doc.text(`(${i + 1}) ${stage}`, photoX, photoY + imgHeight + 5);
-            
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(7);
-            const ts = photos[i].timestamp ? photos[i].timestamp.toDate().toLocaleString('id-ID') : "-";
-            doc.text(ts, photoX + imgWidth, photoY + imgHeight + 5, { align: "right" });
-            
-            if (photos[i].caption) {
-              doc.setFont("helvetica", "italic");
-              doc.text(photos[i].caption || "", photoX, photoY + imgHeight + 9, { maxWidth: imgWidth });
-            }
-
-            if ((i + 1) % 2 === 0) {
-              photoX = margin;
-              photoY += imgHeight + 20;
-            } else {
-              photoX += imgWidth + margin;
-            }
-
-            // New page if needed
-            if (photoY + imgHeight > pageHeight - 30 && i < photos.length - 1) {
-              doc.addPage();
-              y = drawHeader(stageLabels[stage] || stage.toUpperCase(), pageNum, 10);
-              pageNum++;
-              photoX = margin;
-              photoY = y + 10;
-            }
-          } catch (err) {
-            console.error("Error adding image to PDF:", err);
-          }
-        }
-      }
-
-      // Page: Project Summary (BOQ) - Moved to end
-      doc.addPage();
-      let currentY = drawHeader("BOQ REKONSILIASI", pageNum, pageNum + 1);
+      // Page 1: BOQ REKONSILIASI
+      let currentY = drawHeader("BOQ REKONSILIASI", pageNum, totalPages);
       pageNum++;
-      
-      // BOQ Table
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "bold");
-      doc.text("BOQ REKONSILIASI", margin, currentY + 5);
       
       const boqData = [
         ...(project.jobs || []).map(j => [
@@ -401,11 +396,75 @@ export default function ProjectList({ profile }: ProjectListProps) {
         margin: { left: margin, right: margin }
       });
 
-      currentY = (doc as any).lastAutoTable.finalY + 10;
+      // Photo Pages
+      for (const section of activeSections) {
+        const photos = projectEvidence.filter(e => section.stages.includes(e.stage));
+        const hasInseraIds = section.title === 'TIKET INSERA' && project.inseraTicketIds && project.inseraTicketIds.length > 0;
+        
+        doc.addPage();
+        let y = drawHeader(section.title, pageNum, totalPages);
+        pageNum++;
+
+        let photoY = y + 10;
+
+        if (hasInseraIds) {
+          doc.setFontSize(9);
+          doc.setFont("helvetica", "bold");
+          doc.text("TICKET IDS:", margin, photoY);
+          doc.setFont("helvetica", "normal");
+          doc.text(project.inseraTicketIds!.join(', '), margin + 25, photoY);
+          photoY += 10;
+        }
+
+        // Draw photos in a grid (2 per row)
+        const imgWidth = (pageWidth - (margin * 3)) / 2;
+        const imgHeight = imgWidth * 0.75;
+        let photoX = margin;
+
+        for (let i = 0; i < photos.length; i++) {
+          try {
+            const base64 = await getBase64ImageFromURL(photos[i].photoUrl);
+            doc.addImage(base64, 'JPEG', photoX, photoY, imgWidth, imgHeight);
+            
+            // Photo Label & Metadata
+            doc.setFontSize(8);
+            doc.setFont("helvetica", "bold");
+            doc.text(`(${i + 1}) ${photos[i].stage}`, photoX, photoY + imgHeight + 5);
+            
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(7);
+            const ts = photos[i].timestamp ? photos[i].timestamp.toDate().toLocaleString('id-ID') : "-";
+            doc.text(ts, photoX + imgWidth, photoY + imgHeight + 5, { align: "right" });
+            
+            if (photos[i].caption) {
+              doc.setFont("helvetica", "italic");
+              doc.text(photos[i].caption || "", photoX, photoY + imgHeight + 9, { maxWidth: imgWidth });
+            }
+
+            if ((i + 1) % 2 === 0) {
+              photoX = margin;
+              photoY += imgHeight + 20;
+            } else {
+              photoX += imgWidth + margin;
+            }
+
+            // New page if needed
+            if (photoY + imgHeight > pageHeight - 30 && i < photos.length - 1) {
+              doc.addPage();
+              y = drawHeader(section.title, pageNum, totalPages);
+              pageNum++;
+              photoX = margin;
+              photoY = y + 10;
+            }
+          } catch (err) {
+            console.error("Error adding image to PDF:", err);
+          }
+        }
+      }
 
       // Last Page: Signatures
       doc.addPage();
-      drawHeader("PENGESAHAN LAPORAN", pageNum, pageNum);
+      drawHeader("PENGESAHAN LAPORAN", pageNum, totalPages);
       
       const sigY = pageHeight - 60;
       doc.setFontSize(10);
@@ -1433,11 +1492,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
                                     <td className="px-4 py-2 text-right font-bold text-emerald-600">Rp {project.activityCost.toLocaleString()}</td>
                                   </tr>
                                 )}
-                                <tr className="bg-neutral-900 text-white">
-                                  <td colSpan={4} className="px-4 py-3 text-right font-bold uppercase tracking-wider">Grand Total Cost</td>
-                                  <td className="px-4 py-3 text-right font-black text-emerald-400 text-lg">Rp {(project.totalCost || 0).toLocaleString()}</td>
-                                </tr>
-                              </tbody>
+                                </tbody>
                             </table>
                           </div>
                         ) : (

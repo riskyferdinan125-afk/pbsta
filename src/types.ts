@@ -230,7 +230,7 @@ export interface ProjectJob {
 }
 
 export interface ProjectEvidence {
-  stage: 'Initial' | 'Penggalian' | 'Tanam tiang' | 'Pengecoran' | 'Penarikan kabel' | 'Pemasangan aksesoris' | 'Penyambungan core' | 'Pemasangan UC' | 'Penaikan UC' | 'Berita acara';
+  stage: 'Initial' | 'Sebelum' | 'Penggalian' | 'Tanam tiang' | 'Pengecoran' | 'Penarikan kabel' | 'Pemasangan aksesoris' | 'Penyambungan core' | 'Pemasangan UC' | 'Penaikan UC' | 'Sesudah' | 'Berita acara' | 'Tiket Insera' | 'Hasil ukur' | 'As built drawing';
   photoUrl: string;
   caption?: string;
   timestamp: Timestamp;
