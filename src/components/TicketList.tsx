@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, getDoc, updateDoc, runTransaction, increment, Timestamp, writeBatch } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, doc, getDoc, updateDoc, runTransaction, increment, Timestamp, writeBatch } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { Ticket, Customer, TicketStatus, TicketPriority, Technician, TicketCategory, UserProfile } from '../types';
 import { calculateTicketPoints } from '../weights';
@@ -105,7 +105,7 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
     customerId: '',
     description: '',
     priority: 'medium' as TicketPriority,
-    category: 'PROJECT' as TicketCategory,
+    category: '' as any,
     subCategory: '',
     status: 'open' as TicketStatus,
     technicianIds: [] as string[],
@@ -189,8 +189,11 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
     });
 
-    const techUnsubscribe = onSnapshot(collection(db, 'technicians'), (snapshot) => {
-      setTechnicians(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Technician)));
+    const techQuery = query(collection(db, 'users'), where('role', '==', 'teknisi'));
+    const techUnsubscribe = onSnapshot(techQuery, (snapshot) => {
+      setTechnicians(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Technician)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'users');
     });
 
     return () => {
@@ -462,12 +465,15 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
       // 2. Ensure we have a technician
       let demoTechId = technicians[0]?.id;
       if (!demoTechId) {
-        const techRef = await addDoc(collection(db, 'technicians'), {
+        const techRef = await addDoc(collection(db, 'users'), {
           name: 'Andi Wijaya (Demo)',
           email: 'andi.tech@example.com',
           phone: '089876543210',
+          role: 'teknisi',
           availabilityStatus: 'Available',
-          specialization: 'Fiber Optic'
+          specialization: 'Fiber Optic',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
         });
         demoTechId = techRef.id;
       }

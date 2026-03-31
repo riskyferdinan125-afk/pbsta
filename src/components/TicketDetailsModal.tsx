@@ -1,8 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, where, orderBy, onSnapshot, Timestamp, addDoc, serverTimestamp, updateDoc, doc, getDoc, getDocs } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
-import { Ticket, TicketHistory, Technician, Customer, TicketStatus, TicketPriority, RepairRecord, TicketNote, UserProfile, ChecklistItem, Notification } from '../types';
-import { X, Clock, User, ArrowRight, History, Info, Wrench, Send, MessageSquare, UserPlus, RefreshCw, PlusCircle, Link as LinkIcon, AlertTriangle, CheckCircle, Package, StickyNote, ChevronRight, Loader2, Hash, Box, MapPin, Phone, Mail, Camera, Play, Square, Navigation, Timer, HelpCircle } from 'lucide-react';
+import { 
+  calculateTicketPoints, 
+  specificCategoryWeights,
+  projectSubCategoryWeights,
+  regulerSubCategoryWeights,
+  psbSubCategoryWeights,
+  sqmSubCategoryWeights,
+  unspeksSubCategoryWeights,
+  exbisSubCategoryWeights,
+  correctiveSubCategoryWeights,
+  preventiveSubCategoryWeights
+} from '../weights';
+import { Ticket, TicketHistory, Technician, Customer, TicketStatus, TicketPriority, TicketCategory, RepairRecord, TicketNote, UserProfile, ChecklistItem, Notification } from '../types';
+import { X, Edit2, Check, TrendingUp, Clock, User, ArrowRight, History, Info, Wrench, Send, MessageSquare, UserPlus, RefreshCw, PlusCircle, Link as LinkIcon, AlertTriangle, CheckCircle, Package, StickyNote, ChevronRight, Loader2, Hash, Box, MapPin, Phone, Mail, Camera, Play, Square, Navigation, Timer, HelpCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from './Toast';
 
@@ -34,6 +46,11 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<TicketStatus | null>(null);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const canManage = profile?.role === 'superadmin' || profile?.role === 'admin';
+  const [isEditingCategory, setIsEditingCategory] = useState(false);
+  const [isEditingSubCategory, setIsEditingSubCategory] = useState(false);
+  const [tempCategory, setTempCategory] = useState<TicketCategory>(ticket.category);
+  const [tempSubCategory, setTempSubCategory] = useState(ticket.subCategory || '');
 
   const sendNotification = async (userId: string, title: string, message: string, type: Notification['type'] = 'info', link?: string) => {
     try {
@@ -167,7 +184,7 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
         if (!oldTechIds.includes(tid)) {
           const tech = technicians.find(t => t.id === tid);
           if (tech && tech.email) {
-            const userQuery = query(collection(db, 'users'), where('email', '==', tech.email));
+            const userQuery = query(collection(db, 'users'), where('email', '==', tech.email), where('role', '==', 'teknisi'));
             const userSnap = await getDocs(userQuery);
             if (!userSnap.empty) {
               await sendNotification(
@@ -314,6 +331,74 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `tickets/${ticket.id}`);
       showToast('Failed to update priority', 'error');
+    }
+  };
+
+  const handleUpdateCategory = async (category: TicketCategory) => {
+    try {
+      const oldCategory = ticket.category;
+      if (oldCategory === category) {
+        setIsEditingCategory(false);
+        return;
+      }
+
+      const newPoints = calculateTicketPoints(category, ticket.subCategory);
+
+      await updateDoc(doc(db, 'tickets', ticket.id), {
+        category,
+        points: newPoints,
+        updatedAt: serverTimestamp()
+      });
+
+      await addDoc(collection(db, 'ticketHistory'), {
+        ticketId: ticket.id,
+        type: 'status_change',
+        fromValue: oldCategory,
+        toValue: category,
+        changedBy: profile?.name || auth.currentUser?.email || 'Unknown',
+        timestamp: serverTimestamp(),
+        note: `Category updated. Points recalculated to ${newPoints}`
+      });
+
+      setIsEditingCategory(false);
+      showToast(`Category updated to ${category}`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `tickets/${ticket.id}`);
+      showToast('Failed to update category', 'error');
+    }
+  };
+
+  const handleUpdateSubCategory = async () => {
+    try {
+      const oldSubCategory = ticket.subCategory || '';
+      if (oldSubCategory === tempSubCategory) {
+        setIsEditingSubCategory(false);
+        return;
+      }
+
+      const newPoints = calculateTicketPoints(ticket.category, tempSubCategory);
+
+      await updateDoc(doc(db, 'tickets', ticket.id), {
+        subCategory: tempSubCategory,
+        points: newPoints,
+        updatedAt: serverTimestamp()
+      });
+
+      await addDoc(collection(db, 'ticketHistory'), {
+        ticketId: ticket.id,
+        type: 'status_change',
+        fromValue: oldSubCategory,
+        toValue: tempSubCategory,
+        changedBy: profile?.name || auth.currentUser?.email || 'Unknown',
+        timestamp: serverTimestamp(),
+        note: `Sub-category updated. Points recalculated to ${newPoints}`
+      });
+
+      setIsEditingSubCategory(false);
+      showToast(`Sub-category updated to ${tempSubCategory}`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `tickets/${ticket.id}`);
+      showToast('Failed to update sub-category', 'error');
     }
   };
 
@@ -571,6 +656,22 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
       showToast('Failed to update status', 'error');
     }
   };
+
+  const getSubCategories = (category: TicketCategory) => {
+    switch (category) {
+      case 'PROJECT': return Object.keys(projectSubCategoryWeights);
+      case 'REGULER': return Object.keys(regulerSubCategoryWeights);
+      case 'PSB': return Object.keys(psbSubCategoryWeights);
+      case 'SQM': return Object.keys(sqmSubCategoryWeights);
+      case 'UNSPEKS': return Object.keys(unspeksSubCategoryWeights);
+      case 'EXBIS': return Object.keys(exbisSubCategoryWeights);
+      case 'CORRECTIVE': return Object.keys(correctiveSubCategoryWeights);
+      case 'PREVENTIVE': return Object.keys(preventiveSubCategoryWeights);
+      default: return [];
+    }
+  };
+
+  const subCategories = getSubCategories(ticket.category);
 
   const getPriorityColor = (priority: TicketPriority) => {
     switch (priority) {
@@ -851,17 +952,87 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <p className="text-xs text-neutral-500">Category</p>
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2">
-                          <PlusCircle className="w-3 h-3 text-neutral-400" />
-                          <p className="font-bold text-neutral-900">{ticket.category}</p>
-                        </div>
-                        {ticket.subCategory && (
-                          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider ml-5">
-                            {ticket.subCategory}
-                          </span>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-neutral-500">Category</p>
+                        {canManage && !isEditingCategory && (
+                          <button onClick={() => setIsEditingCategory(true)} className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-emerald-600 transition-colors">
+                            <Edit2 className="w-3 h-3" />
+                          </button>
                         )}
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        {isEditingCategory ? (
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={tempCategory}
+                              onChange={(e) => handleUpdateCategory(e.target.value as TicketCategory)}
+                              className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 bg-neutral-100 border-none rounded focus:ring-0 w-full"
+                            >
+                              <option value="PROJECT">PROJECT</option>
+                              <option value="REGULER">REGULER</option>
+                              <option value="PSB">PSB</option>
+                              <option value="SQM">SQM</option>
+                              <option value="UNSPEKS">UNSPEKS</option>
+                              <option value="EXBIS">EXBIS</option>
+                              <option value="CORRECTIVE">CORRECTIVE</option>
+                              <option value="PREVENTIVE">PREVENTIVE</option>
+                              <option value="Other">Other</option>
+                            </select>
+                            <button onClick={() => setIsEditingCategory(false)} className="p-1 text-neutral-400 hover:text-red-500">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <PlusCircle className="w-3 h-3 text-neutral-400" />
+                            <p className="font-bold text-neutral-900">{ticket.category}</p>
+                          </div>
+                        )}
+                        
+                        <div className="flex items-center justify-between mt-1">
+                          <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider ml-5">Sub Category</p>
+                          {canManage && !isEditingSubCategory && (
+                            <button onClick={() => setIsEditingSubCategory(true)} className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-emerald-600 transition-colors">
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                        
+                        {isEditingSubCategory ? (
+                          <div className="flex items-center gap-2 ml-5">
+                            <select
+                              value={tempSubCategory}
+                              onChange={(e) => setTempSubCategory(e.target.value)}
+                              className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 bg-neutral-100 border-none rounded focus:ring-0 w-full appearance-none"
+                            >
+                              <option value="">Select Sub-Category...</option>
+                              {subCategories.map(sub => (
+                                <option key={sub} value={sub}>{sub}</option>
+                              ))}
+                              <option value="Other">Other</option>
+                            </select>
+                            <button onClick={handleUpdateSubCategory} className="p-1 text-emerald-600">
+                              <Check className="w-3 h-3" />
+                            </button>
+                            <button onClick={() => setIsEditingSubCategory(false)} className="p-1 text-neutral-400">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          ticket.subCategory && (
+                            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider ml-5">
+                              {ticket.subCategory}
+                            </span>
+                          )
+                        )}
+                        
+                        <div className="mt-1 ml-5 flex items-center gap-2">
+                          <TrendingUp className="w-3 h-3 text-emerald-500" />
+                          <span className="text-[10px] font-black text-emerald-600 uppercase tracking-tighter">
+                            Points: {ticket.points || 0}
+                          </span>
+                        </div>
+                        
                         {ticket.inseraTicketId && (
                           <div className="mt-2 flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-xl text-[10px] font-bold border border-blue-100 w-fit ml-5">
                             <Box className="w-3 h-3 text-blue-500" />

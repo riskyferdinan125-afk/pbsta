@@ -42,7 +42,8 @@ export default function Dashboard() {
         resolved: tickets.filter(t => t.status === 'resolved').length
       });
 
-      const techsSnap = await getDocs(collection(db, 'technicians'));
+      const techQuery = query(collection(db, 'users'), where('role', '==', 'teknisi'));
+      const techsSnap = await getDocs(techQuery);
       const techs = techsSnap.docs.map(doc => doc.data());
       setTechStats({
         total: techs.length,

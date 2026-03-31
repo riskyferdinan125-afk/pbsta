@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, getDoc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, getDoc, updateDoc, addDoc, serverTimestamp, where } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { Ticket, Customer, Technician, TicketStatus, UserProfile } from '../types';
 import { 
@@ -32,8 +32,11 @@ export default function TicketAssignment({ profile }: { profile: UserProfile | n
   const { showToast } = useToast();
 
   useEffect(() => {
-    const techUnsubscribe = onSnapshot(collection(db, 'technicians'), (snapshot) => {
-      setTechnicians(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Technician)));
+    const techQuery = query(collection(db, 'users'), where('role', '==', 'teknisi'));
+    const techUnsubscribe = onSnapshot(techQuery, (snapshot) => {
+      setTechnicians(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Technician)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'users');
     });
 
     const q = query(collection(db, 'tickets'), orderBy('createdAt', 'desc'));

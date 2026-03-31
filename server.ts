@@ -70,6 +70,97 @@ try {
 // Telegram Bot Integration
 let bot: TelegramBot | null = null;
 const projectSessions = new Map<number, { projectId?: string, jobId?: string, stage?: string }>();
+const ticketSessions = new Map<number, { category?: string, subCategory?: string, stage?: string }>();
+
+const TICKET_CATEGORIES: Record<string, string[]> = {
+  'PROJECT': ['DISTRIBUSI', 'FEEDER', 'ODC', 'ODP'],
+  'REGULER': ['PLATINUM', 'DIAMOND', 'VVIP', 'GOLD', 'REGULER', 'HVC PLATINUM', 'HVC GOLD', 'HVC DIAMOND', 'NON HVC'],
+  'PSB': ['MyRep', 'TBG', '5 MENARA BINTANG', 'Hypemet', 'Surge', 'IBU - FTTR', 'PT Anagata Cipta Teknologi', 'Datin', 'Olo', 'Wifi'],
+  'SQM': ['WorkHours', 'NonWorkHours'],
+  'UNSPEKS': ['Datin', 'HSI', 'Wifi'],
+  'EXBIS': ['TIS', 'Lintasarta', 'Mitratel', 'Surge', 'Centratama', 'UMT'],
+  'CORRECTIVE': ['CSA', 'MMP', 'TBG', 'TIS', 'Polaris', 'Mitratel', 'Digiserve', 'Cross Connect TDE', 'IBU - FTTR', 'Nutech', 'SNT', 'SPBU', 'Surge', 'MyRep', 'Asianet', 'Centratama', 'Lintasarta', 'UMT'],
+  'PREVENTIVE': ['MMP', 'CSA', 'TBG', 'Polaris', 'TIS', 'Fiberisasi', 'Digiserve', 'Cross Connect TDE', 'IBU - FTTR', 'NuTech', 'SNT', 'SPBU', 'Surge', 'Asianet', 'Centratama', 'Lintasarta', 'UMT'],
+  'Other': ['Lainnya']
+};
+
+const CATEGORY_WEIGHTS: Record<string, number> = {
+  'PROJECT': 5, 'REGULER': 2, 'PSB': 3, 'SQM': 3, 'UNSPEKS': 4, 'EXBIS': 4, 'CORRECTIVE': 4, 'PREVENTIVE': 3, 'Other': 1
+};
+
+const SUB_CATEGORY_WEIGHTS: Record<string, Record<string, number>> = {
+  'PROJECT': { 'DISTRIBUSI': 4, 'FEEDER': 10, 'ODC': 18, 'ODP': 3 },
+  'REGULER': { 'PLATINUM': 2, 'DIAMOND': 2, 'VVIP': 2, 'GOLD': 2, 'REGULER': 2, 'HVC PLATINUM': 2, 'HVC GOLD': 2, 'HVC DIAMOND': 2, 'NON HVC': 2 },
+  'PSB': { 'MyRep': 2, 'TBG': 2, '5 MENARA BINTANG': 2, 'Hypemet': 2, 'Surge': 4, 'IBU - FTTR': 5, 'PT Anagata Cipta Teknologi': 8, 'Datin': 6.4, 'Olo': 6.4, 'Wifi': 5.3 },
+  'SQM': { 'WorkHours': 2, 'NonWorkHours': 2 },
+  'UNSPEKS': { 'Datin': 2.67, 'HSI': 2, 'Wifi': 2.67 },
+  'EXBIS': { 'TIS': 8, 'Lintasarta': 8, 'Mitratel': 8, 'Surge': 8, 'Centratama': 8, 'UMT': 8 },
+  'CORRECTIVE': { 'CSA': 4, 'MMP': 4, 'TBG': 4, 'TIS': 4, 'Polaris': 4, 'Mitratel': 4, 'Digiserve': 4, 'Cross Connect TDE': 4, 'IBU - FTTR': 5, 'Nutech': 4, 'SNT': 4, 'SPBU': 4, 'Surge': 4, 'MyRep': 2, 'Asianet': 4, 'Centratama': 4, 'Lintasarta': 4, 'UMT': 4 },
+  'PREVENTIVE': { 'MMP': 2, 'CSA': 2, 'TBG': 2, 'Polaris': 2, 'TIS': 2, 'Fiberisasi': 2, 'Digiserve': 4, 'Cross Connect TDE': 4, 'IBU - FTTR': 5, 'NuTech': 4, 'SNT': 4, 'SPBU': 4, 'Surge': 4, 'Asianet': 2, 'Centratama': 8, 'Lintasarta': 2, 'UMT': 2 }
+};
+
+function calculatePoints(category: string, subCategory?: string): number {
+  let points = CATEGORY_WEIGHTS[category] || 1;
+  if (subCategory && SUB_CATEGORY_WEIGHTS[category] && SUB_CATEGORY_WEIGHTS[category][subCategory]) {
+    points = SUB_CATEGORY_WEIGHTS[category][subCategory];
+  }
+  return points;
+}
+
+async function handleTicketCreation(chatId: number, category: string, subCategory: string, customerId: string) {
+  try {
+    const userDoc = await getAuthorizedUser(chatId);
+    if (!userDoc) return;
+
+    const custQuery = query(collection(db, 'customers'), where('customerId', '==', customerId));
+    const custSnap = await getDocs(custQuery);
+    
+    if (custSnap.empty) {
+      bot?.sendMessage(chatId, `❌ *Customer Tidak Ditemukan!*\n\nCustomer ID \`${customerId}\` tidak terdaftar.`, { parse_mode: 'Markdown' });
+      return;
+    }
+
+    const existingCust = custSnap.docs[0];
+    const customerData = existingCust.data();
+    const points = calculatePoints(category, subCategory);
+
+    const ticketNumber = await runTransaction(db, async (transaction) => {
+      const counterRef = doc(db, 'counters', 'tickets');
+      const counterSnap = await transaction.get(counterRef);
+      let nextNumber = (counterSnap.exists() ? counterSnap.data().current : 1000) + 1;
+      transaction.set(counterRef, { current: nextNumber }, { merge: true });
+      return nextNumber;
+    });
+
+    await addDoc(collection(db, 'tickets'), {
+      customerId: existingCust.id,
+      customerName: customerData.name,
+      customerExternalId: customerId,
+      description: `Created via Telegram by ${userDoc.data().name || 'Technician'}`,
+      status: 'open',
+      priority: 'medium',
+      category,
+      subCategory,
+      points,
+      ticketNumber,
+      technicianIds: [],
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+
+    let successMsg = `✅ *Tiket Berhasil Dibuat!*\n\n`;
+    successMsg += `No Tiket: #${ticketNumber}\n`;
+    successMsg += `Customer: ${customerData.name}\n`;
+    successMsg += `Kategori: ${category}\n`;
+    successMsg += `Sub Kategori: ${subCategory}\n`;
+    successMsg += `Poin: ${points}`;
+    
+    bot?.sendMessage(chatId, successMsg, { parse_mode: 'Markdown' });
+  } catch (e: any) {
+    console.error("Error creating ticket:", e);
+    bot?.sendMessage(chatId, `❌ *Gagal membuat tiket!*`);
+  }
+}
 
 async function getSystemConfig() {
   try {
@@ -104,37 +195,33 @@ async function getOrCreateTechnician(userDoc: any, chatId: number, targetTicket?
     // 1. Try finding by email (most reliable)
     const email = userDoc.data().email;
     if (email) {
-      const q = query(collection(db, 'technicians'), where('email', '==', email));
+      const q = query(collection(db, 'users'), where('email', '==', email), where('role', '==', 'teknisi'));
       const snap = await getDocs(q);
       if (!snap.empty) return snap.docs[0];
     }
 
     // 2. Try by ID (consistency)
-    const techRef = doc(db, 'technicians', userDoc.id);
-    const techSnap = await getDoc(techRef);
-    if (techSnap.exists()) return techSnap;
+    const userRef = doc(db, 'users', userDoc.id);
+    const userSnap = await getDoc(userRef);
+    if (userSnap.exists() && userSnap.data().role === 'teknisi') return userSnap;
 
-    // 3. AUTO-CREATE: If still not found, create a technician record for this user
-    const newTechData = {
+    // 3. AUTO-UPGRADE: If user exists but not a technician, upgrade them?
+    // Or just ensure the user record has technician fields.
+    const techData = {
       nik: userDoc.data().nik || userDoc.data().email?.split('@')[0] || `TECH-${userDoc.id.slice(0, 5)}`,
-      name: userDoc.data().name || userDoc.data().email?.split('@')[0] || 'Unknown Technician',
-      email: userDoc.data().email || '',
-      phone: userDoc.data().phone || '',
       role: 'teknisi',
       availabilityStatus: 'Available',
-      createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     };
     
-    // Create with same ID as user for consistency
-    await setDoc(techRef, newTechData);
-    const newSnap = await getDoc(techRef);
+    await updateDoc(userRef, techData);
+    const newSnap = await getDoc(userRef);
     
-    bot?.sendMessage(chatId, `✅ *Data Teknisi Dibuat Otomatis*\n\nAkun Anda telah didaftarkan sebagai teknisi dengan NIK: \`${newTechData.nik}\`.`, { parse_mode: 'Markdown' });
+    bot?.sendMessage(chatId, `✅ *Data Teknisi Diaktifkan*\n\nAkun Anda telah didaftarkan sebagai teknisi dengan NIK: \`${techData.nik}\`.`, { parse_mode: 'Markdown' });
     return newSnap;
   } catch (e: any) {
     if (e.message?.includes('insufficient permissions')) {
-      handleFirestoreError(e, OperationType.WRITE, 'technicians');
+      handleFirestoreError(e, OperationType.WRITE, 'users');
     }
     console.error("Error in getOrCreateTechnician:", e);
     return null;
@@ -439,7 +526,7 @@ async function initTelegramBot() {
         
         if (techIds.length > 0) {
           for (const tid of techIds) {
-            const tDoc = await getDoc(doc(db, 'technicians', tid));
+            const tDoc = await getDoc(doc(db, 'users', tid));
             if (tDoc.exists()) {
               techNames.push(tDoc.data().name);
               techNiks.push(tDoc.data().nik);
@@ -643,6 +730,60 @@ async function initTelegramBot() {
             parse_mode: 'Markdown'
           });
         }
+
+        // Ticket Creation Flow
+        if (data.startsWith('tkt_cat_')) {
+          const category = data.replace('tkt_cat_', '');
+          ticketSessions.set(chatId, { category, stage: 'waiting_sub_category' });
+          
+          const subCats = TICKET_CATEGORIES[category] || [];
+          const keyboard = [];
+          for (let i = 0; i < subCats.length; i += 2) {
+            const row = [{ text: subCats[i], callback_data: `tkt_sub_${subCats[i]}` }];
+            if (subCats[i+1]) row.push({ text: subCats[i+1], callback_data: `tkt_sub_${subCats[i+1]}` });
+            keyboard.push(row);
+          }
+          keyboard.push([{ text: '⬅️ Kembali', callback_data: 'tkt_back_cat' }]);
+
+          bot?.editMessageText(`🎫 *Kategori: ${category}*\n\nSilakan pilih *Sub Kategori*:`, {
+            chat_id: chatId,
+            message_id: query.message?.message_id,
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: keyboard }
+          });
+        }
+
+        if (data === 'tkt_back_cat') {
+          ticketSessions.delete(chatId);
+          const categories = Object.keys(TICKET_CATEGORIES);
+          const keyboard = [];
+          for (let i = 0; i < categories.length; i += 2) {
+            const row = [{ text: categories[i], callback_data: `tkt_cat_${categories[i]}` }];
+            if (categories[i+1]) row.push({ text: categories[i+1], callback_data: `tkt_cat_${categories[i+1]}` });
+            keyboard.push(row);
+          }
+
+          bot?.editMessageText("🎫 *Buat Tiket Baru* 🎫\n\nSilakan pilih *Kategori* tiket:", {
+            chat_id: chatId,
+            message_id: query.message?.message_id,
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: keyboard }
+          });
+        }
+
+        if (data.startsWith('tkt_sub_')) {
+          const subCategory = data.replace('tkt_sub_', '');
+          const session = ticketSessions.get(chatId);
+          if (!session) return;
+          
+          ticketSessions.set(chatId, { ...session, subCategory, stage: 'waiting_customer_id' });
+          
+          bot?.editMessageText(`🎫 *Kategori: ${session.category}*\n🎫 *Sub Kategori: ${subCategory}*\n\nSilakan masukkan *Customer ID* (contoh: \`CUST001\`):`, {
+            chat_id: chatId,
+            message_id: query.message?.message_id,
+            parse_mode: 'Markdown'
+          });
+        }
       } catch (e) {
         console.error("Error in callback_query:", e);
       }
@@ -809,34 +950,26 @@ async function initTelegramBot() {
       const chatId = msg.chat.id;
       const text = msg.text || '';
       
-      const parts = text.split('\n');
+      const parts = text.split('\n').filter(p => p.trim());
+      
+      // If just the command, start interactive flow
       if (parts.length < 2) {
-        try {
-          // Fetch categories from database
-          const catSnap = await getDocs(collection(db, 'ticketCategories'));
-          let catList = "";
-          catSnap.docs.forEach(doc => {
-            const cat = doc.data();
-            catList += `- *${cat.name}*: ${cat.subCategories?.join(', ') || ''}\n`;
-          });
-
-          const template = "🎫 *Format Buat Tiket Baru* 🎫\n\n" +
-            "Silakan salin dan isi format di bawah ini:\n\n" +
-            "`/addtiket`\n" +
-            "Customer ID:\n" +
-            "Sub Kategory:\n\n" +
-            "*Pilihan Sub Kategory:*\n" +
-            (catList || "_Belum ada data kategory di database_");
-          
-          bot.sendMessage(chatId, template, { parse_mode: 'Markdown' });
-        } catch (err) {
-          console.error("Error fetching categories:", err);
-          bot.sendMessage(chatId, "❌ *Gagal mengambil data kategory dari database!*");
+        const categories = Object.keys(TICKET_CATEGORIES);
+        const keyboard = [];
+        for (let i = 0; i < categories.length; i += 2) {
+          const row = [{ text: categories[i], callback_data: `tkt_cat_${categories[i]}` }];
+          if (categories[i+1]) row.push({ text: categories[i+1], callback_data: `tkt_cat_${categories[i+1]}` });
+          keyboard.push(row);
         }
+
+        bot.sendMessage(chatId, "🎫 *Buat Tiket Baru* 🎫\n\nSilakan pilih *Kategori* tiket:", {
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: keyboard }
+        });
         return;
       }
 
-      // Parsing logic
+      // Parsing logic for legacy multi-line format
       const data: any = {};
       parts.forEach(line => {
         if (line.includes(':')) {
@@ -845,87 +978,17 @@ async function initTelegramBot() {
           const cleanKey = key.trim().toLowerCase();
           
           if (cleanKey.includes('customer id')) data.customerId = value;
+          if (cleanKey.includes('kategory')) data.category = value;
           if (cleanKey.includes('sub kategory')) data.subCategory = value;
         }
       });
 
-      if (!data.customerId || !data.subCategory) {
-        bot.sendMessage(chatId, "⚠️ *Data tidak lengkap!*\n\nMohon pastikan `Customer ID` dan `Sub Kategory` terisi.", { parse_mode: 'Markdown' });
+      if (!data.customerId || !data.category || !data.subCategory) {
+        bot.sendMessage(chatId, "⚠️ *Format Salah!*\n\nGunakan format:\n`/addtiket`\nKategory: ...\nSub Kategory: ...\nCustomer ID: ...", { parse_mode: 'Markdown' });
         return;
       }
 
-      try {
-        // Verify technician/admin
-        const userDoc = await getAuthorizedUser(chatId);
-        
-        if (!userDoc) {
-          bot.sendMessage(chatId, "❌ *Akses Ditolak!*\n\nAkun Telegram Anda belum terhubung.", { parse_mode: 'Markdown' });
-          return;
-        }
-
-        // 0. Find category based on subCategory
-        const catSnap = await getDocs(collection(db, 'ticketCategories'));
-        let foundCategory = "Lainnya";
-        catSnap.docs.forEach(doc => {
-          const cat = doc.data();
-          if (cat.subCategories?.some((sc: string) => sc.toLowerCase() === data.subCategory.toLowerCase())) {
-            foundCategory = cat.name;
-          }
-        });
-        data.category = foundCategory;
-
-        // 1. Find customer
-        const custSnap = await getDocs(collection(db, 'customers'));
-        const existingCust = custSnap.docs.find(doc => doc.data().customerId === data.customerId);
-        
-        if (!existingCust) {
-          bot.sendMessage(chatId, `❌ *Customer Tidak Ditemukan!*\n\nCustomer ID \`${data.customerId}\` tidak terdaftar. Silakan tambahkan pelanggan terlebih dahulu menggunakan perintah \`/pelanggan\`.`, { parse_mode: 'Markdown' });
-          return;
-        }
-
-        const firestoreCustomerId = existingCust.id;
-        const customerData = existingCust.data();
-
-        // 2. Get unique ticket number via transaction
-        const ticketNumber = await runTransaction(db, async (transaction) => {
-          const counterRef = doc(db, 'counters', 'tickets');
-          const counterSnap = await transaction.get(counterRef);
-          
-          let nextNumber = 1001;
-          if (counterSnap.exists()) {
-            nextNumber = (counterSnap.data().current || 1000) + 1;
-          }
-          
-          transaction.set(counterRef, { current: nextNumber }, { merge: true });
-          return nextNumber;
-        });
-
-        // 3. Create ticket
-        await addDoc(collection(db, 'tickets'), {
-          customerId: firestoreCustomerId,
-          customerName: customerData.name,
-          customerExternalId: data.customerId,
-          description: `Created via Telegram by ${userDoc.data().name || 'Technician'}`,
-          status: 'open',
-          priority: 'medium',
-          category: data.category,
-          subCategory: data.subCategory || '',
-          ticketNumber,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-
-        let successMsg = `✅ *Tiket Berhasil Dibuat!*\n\n`;
-        successMsg += `No Tiket: #${ticketNumber}\n`;
-        successMsg += `Customer: ${customerData.name}\n`;
-        successMsg += `Kategory: ${data.category}\n`;
-        successMsg += `Sub Kategory: ${data.subCategory || '-'}`;
-        
-        bot.sendMessage(chatId, successMsg, { parse_mode: 'Markdown' });
-      } catch (e: any) {
-        console.error("Error creating ticket:", e);
-        bot.sendMessage(chatId, `❌ *Gagal membuat tiket!*\n\nError: ${e.message || 'Unknown error'}`, { parse_mode: 'Markdown' });
-      }
+      await handleTicketCreation(chatId, data.category, data.subCategory, data.customerId);
     });
 
     // /addprojects command
@@ -1061,8 +1124,9 @@ async function initTelegramBot() {
 
         const targetTicket = activeTickets[0];
 
-        // 4. Find Technicians by NIK (Check technicians collection)
-        const techSnap = await getDocs(collection(db, 'technicians'));
+        // 4. Find Technicians by NIK (Check users collection with role teknisi)
+        const techQuery = query(collection(db, 'users'), where('role', '==', 'teknisi'));
+        const techSnap = await getDocs(techQuery);
         const techUids: string[] = [];
         const techNames: string[] = [];
         
@@ -1119,8 +1183,19 @@ async function initTelegramBot() {
 
     // Dynamic Commands from Firestore
     bot.on('message', async (msg) => {
+      const chatId = msg.chat.id;
       const text = msg.text;
-      if (!text || !text.startsWith('/')) return;
+      if (!text) return;
+
+      // Handle active ticket session (waiting for Customer ID)
+      const session = ticketSessions.get(chatId);
+      if (session && session.stage === 'waiting_customer_id' && !text.startsWith('/')) {
+        await handleTicketCreation(chatId, session.category!, session.subCategory!, text.trim());
+        ticketSessions.delete(chatId);
+        return;
+      }
+
+      if (!text.startsWith('/')) return;
 
       // Extract command name correctly (handle newlines/spaces)
       const commandName = text.split(/\s+/)[0].substring(1).toLowerCase();
@@ -1194,13 +1269,14 @@ app.get('/api/proxy-image', async (req, res) => {
   try {
     const response = await fetch(imageUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
       },
       redirect: 'follow'
     });
     
     if (!response.ok) {
-      console.error(`[Proxy] Failed to fetch image: ${response.status} ${response.statusText}`);
+      console.error(`[Proxy] Failed to fetch image: ${response.status} ${response.statusText} for URL: ${imageUrl}`);
       throw new Error(`Failed to fetch image: ${response.statusText}`);
     }
     

@@ -312,8 +312,8 @@ export default function ProjectList({ profile }: ProjectListProps) {
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 14;
 
-    const telkomAksesLogo = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Telkom_Akses_logo.svg/1200px-Telkom_Akses_logo.svg.png";
-    const telkomIndonesiaLogo = "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/Telkom_Indonesia_2013.svg/1200px-Telkom_Indonesia_2013.svg.png";
+    const telkomAksesLogo = "https://telkomakses.co.id/wp-content/uploads/2022/07/Logo-Telkom-Akses-1.png";
+    const telkomIndonesiaLogo = "https://www.telkom.co.id/data/image_upload/page/1594112895830_compress_logo%20telkom.png";
     
     let logoAksesData: any = null;
     let logoTelkomData: any = null;

@@ -8,10 +8,21 @@ export interface UserProfile {
   uid: string;
   name: string;
   email: string;
+  nik?: string;
+  phone?: string;
   role: 'superadmin' | 'admin' | 'staf' | 'teknisi';
   photoURL?: string;
   telegramId?: string;
   password?: string;
+  availabilityStatus?: AvailabilityStatus;
+  skills?: string[];
+  workingDays?: string[];
+  workingHours?: string;
+  location?: {
+    lat: number;
+    lng: number;
+    updatedAt: Timestamp;
+  };
   createdAt?: any;
   updatedAt?: any;
 }

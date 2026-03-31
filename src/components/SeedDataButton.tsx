@@ -95,11 +95,13 @@ export default function SeedDataButton() {
       ];
 
       for (const tech of technicians) {
-        const q = query(collection(db, 'technicians'), where('email', '==', tech.email));
+        const q = query(collection(db, 'users'), where('email', '==', tech.email));
         const snap = await getDocs(q);
         if (snap.empty) {
-          await addDoc(collection(db, 'technicians'), {
+          await addDoc(collection(db, 'users'), {
             ...tech,
+            uid: `demo_${tech.nik}`,
+            role: 'teknisi',
             createdAt: serverTimestamp()
           });
         }

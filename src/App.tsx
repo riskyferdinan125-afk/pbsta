@@ -87,19 +87,14 @@ function AppContent() {
 
     const updateLocation = async (position: GeolocationPosition) => {
       try {
-        if (!profile.email) return;
-        const techQuery = query(collection(db, 'technicians'), where('email', '==', profile.email));
-        const techSnap = await getDocs(techQuery);
-        if (!techSnap.empty) {
-          const techId = techSnap.docs[0].id;
-          await updateDoc(doc(db, 'technicians', techId), {
-            location: {
-              lat: position.coords.latitude,
-              lng: position.coords.longitude,
-              updatedAt: serverTimestamp()
-            }
-          });
-        }
+        if (!profile.uid) return;
+        await updateDoc(doc(db, 'users', profile.uid), {
+          location: {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            updatedAt: serverTimestamp()
+          }
+        });
       } catch (error) {
         console.error("Error updating technician location:", error);
       }

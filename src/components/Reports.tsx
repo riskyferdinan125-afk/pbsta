@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { RepairRecord, Technician, MaterialUsage, Ticket, UserProfile } from '../types';
 import { calculateTicketPoints } from '../weights';
@@ -50,11 +50,12 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
   useEffect(() => {
     async function fetchData() {
       const recordsSnap = await getDocs(collection(db, 'repairRecords'));
-      const techsSnap = await getDocs(collection(db, 'technicians'));
+      const techQuery = query(collection(db, 'users'), where('role', '==', 'teknisi'));
+      const techsSnap = await getDocs(techQuery);
       const ticketsSnap = await getDocs(collection(db, 'tickets'));
       
       setRepairRecords(recordsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RepairRecord)));
-      setTechnicians(techsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Technician)));
+      setTechnicians(techsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Technician)));
       setTickets(ticketsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket)));
       setLoading(false);
     }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, getDocs } from 'firebase/firestore';
+import { collection, query, onSnapshot, getDocs, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Ticket, Technician, UserProfile } from '../types';
 import { 
@@ -38,40 +38,51 @@ export default function EmployeeProductivity({ profile }: EmployeeProductivityPr
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
-    const unsubscribeTickets = onSnapshot(collection(db, 'tickets'), (ticketSnapshot) => {
-      const tickets = ticketSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket));
-      
-      onSnapshot(collection(db, 'technicians'), (techSnapshot) => {
-        const technicians = techSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Technician));
+    let tickets: Ticket[] = [];
+    let technicians: UserProfile[] = [];
+
+    const updateStats = () => {
+      if (technicians.length === 0) return;
+
+      const productivityData: ProductivityStats[] = technicians.map(tech => {
+        const techTickets = tickets.filter(t => t.technicianIds?.includes(tech.uid));
+        const completed = techTickets.filter(t => t.status === 'resolved' || t.status === 'closed');
+        const inProgress = techTickets.filter(t => t.status === 'in-progress');
         
-        const productivityData: ProductivityStats[] = technicians.map(tech => {
-          const techTickets = tickets.filter(t => t.technicianIds?.includes(tech.id));
-          const completed = techTickets.filter(t => t.status === 'resolved' || t.status === 'closed');
-          const inProgress = techTickets.filter(t => t.status === 'in-progress');
-          
-          const totalTime = completed.reduce((sum, t) => sum + (t.totalTimeSpent || 0), 0);
-          const totalRating = completed.reduce((sum, t) => sum + (t.rating || 0), 0);
-          const ratedCount = completed.filter(t => t.rating && t.rating > 0).length;
-          const totalPoints = techTickets.reduce((sum, t) => sum + (t.points || 0), 0);
+        const totalTime = completed.reduce((sum, t) => sum + (t.totalTimeSpent || 0), 0);
+        const totalRating = completed.reduce((sum, t) => sum + (t.rating || 0), 0);
+        const ratedCount = completed.filter(t => t.rating && t.rating > 0).length;
+        const totalPoints = techTickets.reduce((sum, t) => sum + (t.points || 0), 0);
 
-          return {
-            technicianId: tech.id,
-            technicianName: tech.name,
-            completedTickets: completed.length,
-            avgCompletionTime: completed.length > 0 ? totalTime / completed.length : 0,
-            avgRating: ratedCount > 0 ? totalRating / ratedCount : 0,
-            inProgressTickets: inProgress.length,
-            totalPoints: totalPoints
-          };
-        });
-
-        setStats(productivityData);
-        setLoading(false);
+        return {
+          technicianId: tech.uid,
+          technicianName: tech.name,
+          completedTickets: completed.length,
+          avgCompletionTime: completed.length > 0 ? totalTime / completed.length : 0,
+          avgRating: ratedCount > 0 ? totalRating / ratedCount : 0,
+          inProgressTickets: inProgress.length,
+          totalPoints: totalPoints
+        };
       });
+
+      setStats(productivityData);
+      setLoading(false);
+    };
+
+    const unsubscribeTickets = onSnapshot(collection(db, 'tickets'), (snapshot) => {
+      tickets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket));
+      updateStats();
+    });
+
+    const techQuery = query(collection(db, 'users'), where('role', '==', 'teknisi'));
+    const unsubscribeTechs = onSnapshot(techQuery, (snapshot) => {
+      technicians = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
+      updateStats();
     });
 
     return () => {
       unsubscribeTickets();
+      unsubscribeTechs();
     };
   }, []);
 

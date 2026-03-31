@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, updateDoc, doc, deleteDoc, query, orderBy, setDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { UserProfile } from '../types';
-import { Search, UserCog, Mail, Shield, Edit2, Trash2, X, UserCircle, CheckCircle2, AlertCircle, Lock, UserPlus } from 'lucide-react';
+import { Search, UserCog, Mail, Shield, Edit2, Trash2, X, UserCircle, CheckCircle2, AlertCircle, Lock, UserPlus, Eye, Fingerprint } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ConfirmationModal from './ConfirmationModal';
 import { useToast } from './Toast';
@@ -23,11 +23,13 @@ export default function UserManagement({ profile }: UserManagementProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('All');
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [viewingUser, setViewingUser] = useState<UserProfile | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id?: string; name?: string }>({ isOpen: false });
 
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    nik: '',
     role: 'staf' as UserProfile['role'],
     password: ''
   });
@@ -44,6 +46,45 @@ export default function UserManagement({ profile }: UserManagementProps) {
     });
     return unsubscribe;
   }, []);
+
+  const handleBulkCleanup = async () => {
+    const targetEmails = [
+      'tg_1097862411@telegram.bot',
+      'tg_436950647@telegram.bot',
+      'adityawibowo110@gmail.com',
+      'tg_98681282@telegram.bot'
+    ];
+    const targetNiks = ['109786241', '436950647', '98681282'];
+    
+    const usersToDelete = users.filter(u => 
+      (targetEmails.includes(u.email) || targetNiks.includes(u.nik || '') || u.role === 'staf') && 
+      u.uid !== profile?.uid
+    );
+
+    if (usersToDelete.length === 0) {
+      showToast('No matching users found for cleanup', 'info');
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to delete ${usersToDelete.length} users (Target Emails, NIKs, and all Staff)?`)) {
+      return;
+    }
+
+    setLoading(true);
+    let deletedCount = 0;
+    try {
+      for (const user of usersToDelete) {
+        await deleteDoc(doc(db, 'users', user.uid));
+        deletedCount++;
+      }
+      showToast(`Successfully deleted ${deletedCount} users`, 'success');
+    } catch (error) {
+      console.error("Error in bulk cleanup:", error);
+      showToast('Failed to complete bulk cleanup', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,6 +124,7 @@ export default function UserManagement({ profile }: UserManagementProps) {
         uid: newUser.uid,
         name: formData.name,
         email: formData.email,
+        nik: formData.nik,
         role: formData.role,
         password: formData.password, // Store for reference as requested
         createdAt: new Date(),
@@ -129,8 +171,11 @@ export default function UserManagement({ profile }: UserManagementProps) {
 
     try {
       await updateDoc(doc(db, 'users', editingUser.uid), {
+        name: formData.name,
+        nik: formData.nik,
         role: formData.role,
-        password: formData.password
+        password: formData.password,
+        updatedAt: new Date()
       });
       showToast('User updated successfully', 'success');
       closeModal();
@@ -161,10 +206,19 @@ export default function UserManagement({ profile }: UserManagementProps) {
     setFormData({
       name: user.name,
       email: user.email,
+      nik: user.nik || '',
       role: user.role,
       password: user.password || ''
     });
     setIsModalOpen(true);
+  };
+
+  const openViewModal = (user: UserProfile) => {
+    setViewingUser(user);
+  };
+
+  const closeViewModal = () => {
+    setViewingUser(null);
   };
 
   const closeModal = () => {
@@ -176,6 +230,7 @@ export default function UserManagement({ profile }: UserManagementProps) {
     setFormData({
       name: '',
       email: '',
+      nik: '',
       role: 'staf',
       password: ''
     });
@@ -232,13 +287,24 @@ export default function UserManagement({ profile }: UserManagementProps) {
             ))}
           </select>
         </div>
-        <button
-          onClick={openAddModal}
-          className="flex items-center gap-2 px-6 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20"
-        >
-          <UserPlus className="w-5 h-5" />
-          Add User
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleBulkCleanup}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 font-bold rounded-xl hover:bg-red-100 transition-all border border-red-100 disabled:opacity-50"
+            title="Clean up default users and staff"
+          >
+            <Trash2 className="w-5 h-5" />
+            <span className="hidden sm:inline">Cleanup</span>
+          </button>
+          <button
+            onClick={openAddModal}
+            className="flex items-center gap-2 px-6 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20"
+          >
+            <UserPlus className="w-5 h-5" />
+            Add User
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
@@ -247,6 +313,7 @@ export default function UserManagement({ profile }: UserManagementProps) {
             <thead>
               <tr className="bg-neutral-50 border-b border-black/5">
                 <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">User</th>
+                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">NIK</th>
                 <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Email</th>
                 <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Password</th>
                 <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase tracking-wider">Role</th>
@@ -277,6 +344,7 @@ export default function UserManagement({ profile }: UserManagementProps) {
                       <span className="font-medium text-neutral-900">{u.name}</span>
                     </div>
                   </td>
+                  <td className="px-6 py-4 text-sm text-neutral-500">{u.nik || '-'}</td>
                   <td className="px-6 py-4 text-sm text-neutral-500">{u.email}</td>
                   <td className="px-6 py-4 text-sm font-mono text-neutral-500">
                     {u.password ? (
@@ -297,18 +365,25 @@ export default function UserManagement({ profile }: UserManagementProps) {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center justify-end gap-2 transition-opacity">
+                      <button
+                        onClick={() => openViewModal(u)}
+                        className="p-2 hover:bg-neutral-100 text-neutral-500 rounded-lg transition-colors border border-black/5"
+                        title="View Details"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
                       <button
                         onClick={() => openModal(u)}
-                        className="p-2 hover:bg-neutral-100 text-neutral-500 rounded-lg transition-colors"
-                        title="Edit Role"
+                        className="p-2 hover:bg-neutral-100 text-neutral-500 rounded-lg transition-colors border border-black/5"
+                        title="Edit User"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
                       {u.uid !== profile?.uid && (
                         <button
                           onClick={() => handleDelete(u.uid, u.name)}
-                          className="p-2 hover:bg-red-50 text-red-600 rounded-lg transition-colors"
+                          className="p-2 hover:bg-red-50 text-red-600 rounded-lg transition-colors border border-red-100"
                           title="Delete User"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -340,12 +415,12 @@ export default function UserManagement({ profile }: UserManagementProps) {
               className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
             >
               <div className="p-6 border-b border-black/5 flex items-center justify-between">
-                <h3 className="text-xl font-bold text-neutral-900">Manage User Role</h3>
+                <h3 className="text-xl font-bold text-neutral-900">Manage User</h3>
                 <button onClick={closeModal} className="p-2 hover:bg-neutral-100 rounded-lg">
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <form onSubmit={handleSubmit} className="p-6 space-y-6">
+              <form onSubmit={handleSubmit} className="p-6 space-y-4">
                 <div className="flex items-center gap-4 p-4 bg-neutral-50 rounded-2xl border border-black/5">
                   <div className="w-12 h-12 rounded-full bg-white border border-black/5 overflow-hidden shrink-0">
                     {editingUser.photoURL ? (
@@ -357,6 +432,35 @@ export default function UserManagement({ profile }: UserManagementProps) {
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-neutral-900 truncate">{editingUser.name}</p>
                     <p className="text-sm text-neutral-500 truncate">{editingUser.email}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-neutral-700 mb-2 uppercase tracking-wider">Full Name</label>
+                  <div className="relative">
+                    <UserCircle className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+                    <input
+                      type="text"
+                      required
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="w-full pl-10 pr-4 py-3 bg-neutral-50 border border-neutral-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                      placeholder="Enter full name"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-neutral-700 mb-2 uppercase tracking-wider">NIK</label>
+                  <div className="relative">
+                    <Fingerprint className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+                    <input
+                      type="text"
+                      value={formData.nik}
+                      onChange={(e) => setFormData({ ...formData, nik: e.target.value })}
+                      className="w-full pl-10 pr-4 py-3 bg-neutral-50 border border-neutral-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                      placeholder="Enter NIK"
+                    />
                   </div>
                 </div>
 
@@ -377,29 +481,26 @@ export default function UserManagement({ profile }: UserManagementProps) {
 
                 <div>
                   <label className="block text-sm font-bold text-neutral-700 mb-3 uppercase tracking-wider">Select Role</label>
-                  <div className="grid grid-cols-1 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     {ROLES.map((role) => (
                       <button
                         key={role}
                         type="button"
                         onClick={() => setFormData({ ...formData, role })}
-                        className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all ${
+                        className={`flex items-center justify-between p-3 rounded-xl border-2 transition-all ${
                           formData.role === role
                             ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
                             : 'border-black/5 hover:border-emerald-200 text-neutral-600'
                         }`}
                       >
-                        <div className="flex items-center gap-3">
-                          <Shield className={`w-5 h-5 ${formData.role === role ? 'text-emerald-500' : 'text-neutral-400'}`} />
-                          <span className="font-bold capitalize">{role}</span>
-                        </div>
-                        {formData.role === role && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                        <span className="text-xs font-bold capitalize">{role}</span>
+                        {formData.role === role && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
                       </button>
                     ))}
                   </div>
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex gap-3 pt-4">
                   <button
                     type="button"
                     onClick={closeModal}
@@ -411,7 +512,7 @@ export default function UserManagement({ profile }: UserManagementProps) {
                     type="submit"
                     className="flex-1 py-3 px-4 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20"
                   >
-                    Update Role
+                    Update User
                   </button>
                 </div>
               </form>
@@ -448,6 +549,20 @@ export default function UserManagement({ profile }: UserManagementProps) {
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       className="w-full pl-10 pr-4 py-3 bg-neutral-50 border border-neutral-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
                       placeholder="Enter full name"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-neutral-700 mb-2 uppercase tracking-wider">NIK</label>
+                  <div className="relative">
+                    <Fingerprint className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+                    <input
+                      type="text"
+                      value={formData.nik}
+                      onChange={(e) => setFormData({ ...formData, nik: e.target.value })}
+                      className="w-full pl-10 pr-4 py-3 bg-neutral-50 border border-neutral-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                      placeholder="Enter NIK"
                     />
                   </div>
                 </div>
@@ -520,6 +635,93 @@ export default function UserManagement({ profile }: UserManagementProps) {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* View User Modal */}
+      <AnimatePresence>
+        {viewingUser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+            >
+              <div className="p-6 border-b border-black/5 flex items-center justify-between">
+                <h3 className="text-xl font-bold text-neutral-900">User Details</h3>
+                <button onClick={closeViewModal} className="p-2 hover:bg-neutral-100 rounded-lg">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6 space-y-6">
+                <div className="flex flex-col items-center text-center space-y-4">
+                  <div className="w-24 h-24 rounded-full bg-neutral-100 border-4 border-emerald-50 overflow-hidden shadow-inner">
+                    {viewingUser.photoURL ? (
+                      <img src={viewingUser.photoURL} alt={viewingUser.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      <UserCircle className="w-full h-full p-4 text-neutral-400" />
+                    )}
+                  </div>
+                  <div>
+                    <h4 className="text-2xl font-bold text-neutral-900">{viewingUser.name}</h4>
+                    <span className={`mt-2 inline-block px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest ${
+                      viewingUser.role === 'superadmin' ? 'bg-purple-100 text-purple-700' :
+                      viewingUser.role === 'admin' ? 'bg-blue-100 text-blue-700' :
+                      viewingUser.role === 'staf' ? 'bg-emerald-100 text-emerald-700' :
+                      viewingUser.role === 'teknisi' ? 'bg-orange-100 text-orange-700' :
+                      'bg-neutral-100 text-neutral-700'
+                    }`}>
+                      {viewingUser.role}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="p-4 bg-neutral-50 rounded-xl border border-black/5">
+                    <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-1">Email Address</p>
+                    <div className="flex items-center gap-2 text-neutral-900 font-medium">
+                      <Mail className="w-4 h-4 text-emerald-500" />
+                      {viewingUser.email}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-neutral-50 rounded-xl border border-black/5">
+                    <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-1">NIK (National ID)</p>
+                    <div className="flex items-center gap-2 text-neutral-900 font-medium">
+                      <Fingerprint className="w-4 h-4 text-emerald-500" />
+                      {viewingUser.nik || 'Not set'}
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-neutral-50 rounded-xl border border-black/5">
+                    <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-1">Password (Reference)</p>
+                    <div className="flex items-center gap-2 text-neutral-900 font-medium">
+                      <Lock className="w-4 h-4 text-emerald-500" />
+                      {viewingUser.password || 'Not set'}
+                    </div>
+                  </div>
+
+                  {viewingUser.telegramId && (
+                    <div className="p-4 bg-neutral-50 rounded-xl border border-black/5">
+                      <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-1">Telegram ID</p>
+                      <div className="flex items-center gap-2 text-neutral-900 font-medium">
+                        <Shield className="w-4 h-4 text-emerald-500" />
+                        {viewingUser.telegramId}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={closeViewModal}
+                  className="w-full py-3 bg-neutral-900 text-white rounded-xl font-bold hover:bg-neutral-800 transition-all"
+                >
+                  Close
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

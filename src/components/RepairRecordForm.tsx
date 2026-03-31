@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, updateDoc, increment } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, updateDoc, increment, query, where } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { Technician, Material, MaterialUsage, RepairRecord, Notification, Job, JobUsage } from '../types';
 import { X, Plus, Trash2, Save, Clock, Wrench, Package, AlertTriangle, Camera, MapPin, PenTool, Briefcase } from 'lucide-react';
@@ -66,8 +66,11 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
   }, []);
 
   useEffect(() => {
-    const unsubTechs = onSnapshot(collection(db, 'technicians'), (snapshot) => {
-      setTechnicians(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Technician)));
+    const techQuery = query(collection(db, 'users'), where('role', '==', 'teknisi'));
+    const unsubTechs = onSnapshot(techQuery, (snapshot) => {
+      setTechnicians(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Technician)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'users');
     });
 
     const unsubMaterials = onSnapshot(collection(db, 'materials'), (snapshot) => {

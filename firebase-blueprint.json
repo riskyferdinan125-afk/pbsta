@@ -147,23 +147,6 @@
       },
       "required": ["designator", "name", "unit", "materialPrice", "servicePrice", "price"]
     },
-    "Technician": {
-      "title": "Technician",
-      "description": "Service technician information",
-      "type": "object",
-      "properties": {
-        "name": { "type": "string", "description": "Full name" },
-        "nik": { "type": "string", "description": "National ID Number (NIK)" },
-        "email": { "type": "string", "description": "Email address" },
-        "phone": { "type": "string", "description": "Contact phone" },
-        "role": { "type": "string", "description": "Technician role/specialty" },
-        "photoURL": { "type": "string", "description": "Profile picture URL" },
-        "availabilityStatus": { "type": "string", "enum": ["Available", "Busy", "On Leave"], "description": "Current availability status" },
-        "workingDays": { "type": "array", "items": { "type": "string" }, "description": "Working days of the week" },
-        "workingHours": { "type": "string", "description": "Working hours" }
-      },
-      "required": ["name", "email", "role", "availabilityStatus"]
-    },
     "RepairRecord": {
       "title": "Repair Record",
       "description": "Details of a repair performed on a ticket",
@@ -225,9 +208,13 @@
         "uid": { "type": "string" },
         "name": { "type": "string" },
         "email": { "type": "string" },
-        "role": { "type": "string", "enum": ["superadmin", "admin", "technician"] },
+        "nik": { "type": "string", "description": "National ID Number (NIK)" },
+        "role": { "type": "string", "enum": ["superadmin", "admin", "staf", "teknisi"] },
         "photoURL": { "type": "string" },
-        "telegramId": { "type": "string", "description": "Telegram Chat ID for bot integration" }
+        "telegramId": { "type": "string", "description": "Telegram Chat ID for bot integration" },
+        "availabilityStatus": { "type": "string", "enum": ["Available", "Busy", "On Leave", "Offline"], "description": "Current availability status" },
+        "workingDays": { "type": "array", "items": { "type": "string" }, "description": "Working days of the week" },
+        "workingHours": { "type": "string", "description": "Working hours" }
       },
       "required": ["uid", "name", "email", "role"]
     },
@@ -376,7 +363,6 @@
     "/customers": { "schema": "Customer", "description": "Collection of customers" },
     "/tickets": { "schema": "Ticket", "description": "Collection of service tickets" },
     "/materials": { "schema": "Material", "description": "Inventory of materials" },
-    "/technicians": { "schema": "Technician", "description": "Collection of technicians" },
     "/repairRecords": { "schema": "RepairRecord", "description": "History of repairs performed" },
     "/assets": { "schema": "Asset", "description": "Customer hardware assets" },
     "/knowledgeBase": { "schema": "KnowledgeBaseArticle", "description": "Internal documentation" },

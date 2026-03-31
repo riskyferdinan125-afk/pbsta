@@ -88,12 +88,12 @@ export default function CustomerPortal() {
 
   useEffect(() => {
     if (selectedTicket && selectedTicket.status === 'in-progress' && selectedTicket.technicianIds && selectedTicket.technicianIds.length > 0) {
-      const q = query(collection(db, 'technicians'), where(documentId(), 'in', selectedTicket.technicianIds));
+      const q = query(collection(db, 'users'), where(documentId(), 'in', selectedTicket.technicianIds));
       const unsubscribe = onSnapshot(q, (snapshot) => {
-        const techs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Technician));
+        const techs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Technician));
         setAssignedTechnicians(techs);
       }, (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'technicians');
+        handleFirestoreError(error, OperationType.LIST, 'users');
       });
       return unsubscribe;
     } else {

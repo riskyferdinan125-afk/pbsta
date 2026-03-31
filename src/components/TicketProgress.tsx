@@ -36,8 +36,11 @@ export default function TicketProgress({ profile }: { profile: UserProfile | nul
   }, [profile, technicians]);
 
   useEffect(() => {
-    const techUnsubscribe = onSnapshot(collection(db, 'technicians'), (snapshot) => {
-      setTechnicians(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Technician)));
+    const techQuery = query(collection(db, 'users'), where('role', '==', 'teknisi'));
+    const techUnsubscribe = onSnapshot(techQuery, (snapshot) => {
+      setTechnicians(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Technician)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'users');
     });
 
     // We want tickets that are assigned to a technician
@@ -62,7 +65,7 @@ export default function TicketProgress({ profile }: { profile: UserProfile | nul
         }
 
         if (data.technicianIds && data.technicianIds.length > 0) {
-          const techDocs = await Promise.all(data.technicianIds.map(id => getDoc(doc(db, 'technicians', id))));
+          const techDocs = await Promise.all(data.technicianIds.map(id => getDoc(doc(db, 'users', id))));
           technicianNames = techDocs.filter(d => d.exists()).map(d => d.data()!.name);
         }
 

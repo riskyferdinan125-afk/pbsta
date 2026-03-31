@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, addDoc, updateDoc, doc, deleteDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, doc, deleteDoc, writeBatch, serverTimestamp, query, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, handleFirestoreError, OperationType } from '../firebase';
 import { Technician, AvailabilityStatus, UserProfile } from '../types';
@@ -46,11 +46,12 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
   const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'technicians'), (snapshot) => {
-      setTechnicians(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Technician)));
+    const q = query(collection(db, 'users'), where('role', '==', 'teknisi'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setTechnicians(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Technician)));
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'technicians');
+      handleFirestoreError(error, OperationType.LIST, 'users');
     });
     return unsubscribe;
   }, []);
@@ -68,14 +69,19 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
 
     try {
       if (editingTech) {
-        await updateDoc(doc(db, 'technicians', editingTech.id), {
+        await updateDoc(doc(db, 'users', editingTech.id), {
           ...formData,
           updatedAt: serverTimestamp()
         });
         showToast('Technician updated successfully', 'success');
       } else {
-        await addDoc(collection(db, 'technicians'), {
+        // For users, we usually create them via UserManagement or Auth
+        // But if we add here, we need to be careful about UID
+        // For now, let's keep it consistent with UserManagement if possible
+        // Or just add to users collection
+        await addDoc(collection(db, 'users'), {
           ...formData,
+          role: 'teknisi',
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
@@ -83,7 +89,7 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
       }
       closeModal();
     } catch (error) {
-      handleFirestoreError(error, editingTech ? OperationType.UPDATE : OperationType.CREATE, 'technicians');
+      handleFirestoreError(error, editingTech ? OperationType.UPDATE : OperationType.CREATE, 'users');
       showToast('Failed to save technician', 'error');
     }
   };
@@ -95,11 +101,11 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
   const confirmSingleDelete = async () => {
     if (!confirmDelete.id) return;
     try {
-      await deleteDoc(doc(db, 'technicians', confirmDelete.id));
+      await deleteDoc(doc(db, 'users', confirmDelete.id));
       setConfirmDelete({ isOpen: false });
       showToast('Technician deleted successfully', 'success');
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `technicians/${confirmDelete.id}`);
+      handleFirestoreError(error, OperationType.DELETE, `users/${confirmDelete.id}`);
       showToast('Failed to delete technician', 'error');
     }
   };
@@ -112,14 +118,14 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
     try {
       const batch = writeBatch(db);
       selectedTechIds.forEach(id => {
-        batch.delete(doc(db, 'technicians', id));
+        batch.delete(doc(db, 'users', id));
       });
       await batch.commit();
       setSelectedTechIds([]);
       setConfirmDelete({ isOpen: false });
       showToast(`${selectedTechIds.length} technicians deleted`, 'success');
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, 'technicians/bulk');
+      handleFirestoreError(error, OperationType.DELETE, 'users/bulk');
       showToast('Failed to delete technicians', 'error');
     }
   };
@@ -128,27 +134,27 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
     try {
       const batch = writeBatch(db);
       selectedTechIds.forEach(id => {
-        batch.update(doc(db, 'technicians', id), { availabilityStatus: status });
+        batch.update(doc(db, 'users', id), { availabilityStatus: status });
       });
       await batch.commit();
       setSelectedTechIds([]);
       setIsBulkStatusModalOpen(false);
       showToast(`Status updated for ${selectedTechIds.length} technicians`, 'success');
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, 'technicians/bulk-status');
+      handleFirestoreError(error, OperationType.UPDATE, 'users/bulk-status');
       showToast('Failed to update status', 'error');
     }
   };
 
   const updateTechStatus = async (id: string, status: AvailabilityStatus) => {
     try {
-      await updateDoc(doc(db, 'technicians', id), { 
+      await updateDoc(doc(db, 'users', id), { 
         availabilityStatus: status,
         updatedAt: serverTimestamp()
       });
       showToast(`Status updated to ${status}`, 'success');
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `technicians/${id}`);
+      handleFirestoreError(error, OperationType.UPDATE, `users/${id}`);
       showToast('Failed to update status', 'error');
     }
   };

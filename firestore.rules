@@ -166,20 +166,6 @@ service cloud.firestore {
              (!('createdAt' in data) || data.createdAt is timestamp || data.createdAt == null);
     }
 
-    function isValidTechnician(data) {
-      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             data.email is string && isValidEmail(data.email) &&
-             data.role is string && data.role.size() > 0 &&
-             data.availabilityStatus in ['Available', 'Busy', 'On Leave', 'Offline'] &&
-             (!('nik' in data) || (data.nik is string && data.nik.size() <= 20)) &&
-             (!('phone' in data) || data.phone is string) &&
-             (!('photoURL' in data) || data.photoURL is string) &&
-             (!('workingDays' in data) || (data.workingDays is list && data.workingDays.size() <= 7)) &&
-             (!('workingHours' in data) || data.workingHours is string) &&
-             (!('createdAt' in data) || data.createdAt is timestamp) &&
-             (!('updatedAt' in data) || data.updatedAt is timestamp);
-    }
-
     function isValidRepairRecord(data) {
       return data.ticketId is string &&
              data.technicianId is string &&
@@ -286,9 +272,13 @@ service cloud.firestore {
              data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
              data.email is string && isValidEmail(data.email) &&
              data.role in ['superadmin', 'admin', 'staf', 'teknisi'] &&
+             (!('nik' in data) || (data.nik is string && data.nik.size() <= 20)) &&
              (!('photoURL' in data) || data.photoURL is string) &&
              (!('telegramId' in data) || data.telegramId is string) &&
              (!('password' in data) || (data.password is string && data.password.size() < 100)) &&
+             (!('availabilityStatus' in data) || data.availabilityStatus in ['Available', 'Busy', 'On Leave', 'Offline']) &&
+             (!('workingDays' in data) || (data.workingDays is list && data.workingDays.size() <= 7)) &&
+             (!('workingHours' in data) || data.workingHours is string) &&
              (!('createdAt' in data) || data.createdAt is timestamp) &&
              (!('updatedAt' in data) || data.updatedAt is timestamp);
     }
@@ -371,19 +361,6 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create, delete: if isAdmin();
       allow update: if isAdmin() || isTechnician();
-    }
-
-    match /technicians/{techId} {
-      allow read: if true; // Allow bot to read technicians for NIK verification
-      allow create: if (isAdmin() || request.auth == null) && isValidTechnician(request.resource.data);
-      allow update: if isAdmin() || request.auth == null || (
-        isAuthenticated() && 
-        request.auth.token.email == resource.data.email && 
-        isValidTechnician(request.resource.data) &&
-        request.resource.data.email == resource.data.email && // Cannot change own email
-        request.resource.data.role == resource.data.role // Cannot change own role
-      );
-      allow delete: if isAdmin();
     }
 
     match /repairRecords/{recordId} {
