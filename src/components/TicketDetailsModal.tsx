@@ -13,8 +13,8 @@ import {
   correctiveSubCategoryWeights,
   preventiveSubCategoryWeights
 } from '../weights';
-import { Ticket, TicketHistory, Technician, Customer, TicketStatus, TicketPriority, TicketCategory, RepairRecord, TicketNote, UserProfile, ChecklistItem, Notification } from '../types';
-import { X, Edit2, Check, TrendingUp, Clock, User, ArrowRight, History, Info, Wrench, Send, MessageSquare, UserPlus, RefreshCw, PlusCircle, Link as LinkIcon, AlertTriangle, CheckCircle, Package, StickyNote, ChevronRight, Loader2, Hash, Box, MapPin, Phone, Mail, Camera, Play, Square, Navigation, Timer, HelpCircle } from 'lucide-react';
+import { Ticket, TicketHistory, Technician, Customer, TicketStatus, TicketPriority, TicketCategory, RepairRecord, TicketNote, UserProfile, ChecklistItem, Notification, Material } from '../types';
+import { X, Edit2, Check, TrendingUp, Clock, User, ArrowRight, History, Info, Wrench, Send, MessageSquare, UserPlus, RefreshCw, PlusCircle, Link as LinkIcon, AlertTriangle, CheckCircle, Package, StickyNote, ChevronRight, Loader2, Hash, Box, MapPin, Phone, Mail, Camera, Play, Square, Navigation, Timer, HelpCircle, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from './Toast';
 
@@ -39,7 +39,12 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [dependencyTickets, setDependencyTickets] = useState<Ticket[]>([]);
   const [isManageDepsModalOpen, setIsManageDepsModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'details' | 'history' | 'notes' | 'assignments'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'history' | 'notes' | 'assignments' | 'materials'>('details');
+  const [materialsUsed, setMaterialsUsed] = useState<any[]>([]);
+  const [availableMaterials, setAvailableMaterials] = useState<Material[]>([]);
+  const [selectedMaterialId, setSelectedMaterialId] = useState('');
+  const [materialQuantity, setMaterialQuantity] = useState(1);
+  const [materialPrice, setMaterialPrice] = useState(0);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [newChecklistItem, setNewChecklistItem] = useState('');
   const [statusComment, setStatusComment] = useState('');
@@ -52,7 +57,52 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
   const [tempCategory, setTempCategory] = useState<TicketCategory>(ticket.category);
   const [tempSubCategory, setTempSubCategory] = useState(ticket.subCategory || '');
 
-  const sendNotification = async (userId: string, title: string, message: string, type: Notification['type'] = 'info', link?: string) => {
+  useEffect(() => {
+    const material = availableMaterials.find(m => m.id === selectedMaterialId);
+    if (material) {
+      setMaterialPrice(material.price);
+    } else {
+      setMaterialPrice(0);
+    }
+  }, [selectedMaterialId, availableMaterials]);
+
+  const handleAddMaterial = async () => {
+    const material = availableMaterials.find(m => m.id === selectedMaterialId);
+    if (!material) return;
+
+    try {
+      await addDoc(collection(db, 'tickets', ticket.id, 'materialsUsed'), {
+        materialId: material.id,
+        name: material.name,
+        quantity: materialQuantity,
+        unitPrice: materialPrice,
+        addedBy: auth.currentUser?.email || 'Unknown',
+        createdAt: serverTimestamp()
+      });
+      
+      setSelectedMaterialId('');
+      setMaterialQuantity(1);
+      setMaterialPrice(0);
+      showToast('Material added to ticket', 'success');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `tickets/${ticket.id}/materialsUsed`);
+    }
+  };
+
+  const handleRemoveMaterial = async (id: string) => {
+    try {
+      await updateDoc(doc(db, 'tickets', ticket.id, 'materialsUsed', id), {
+        deleted: true // Or just delete it
+      });
+      // Actually let's just delete it for simplicity as per request
+      const { deleteDoc } = await import('firebase/firestore');
+      await deleteDoc(doc(db, 'tickets', ticket.id, 'materialsUsed', id));
+      showToast('Material removed from ticket', 'success');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `tickets/${ticket.id}/materialsUsed/${id}`);
+    }
+  };
+  const sendNotification = async (userId: string, title: string, message: string, type: string, link?: string) => {
     try {
       await addDoc(collection(db, 'notifications'), {
         userId,
@@ -133,10 +183,20 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
       handleFirestoreError(error, OperationType.LIST, 'ticketNotes');
     });
 
+    const unsubMaterialsUsed = onSnapshot(collection(db, 'tickets', ticket.id, 'materialsUsed'), (snapshot) => {
+      setMaterialsUsed(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const unsubAvailableMaterials = onSnapshot(collection(db, 'materials'), (snapshot) => {
+      setAvailableMaterials(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Material)));
+    });
+
     return () => {
       unsubscribe();
       unsubRepairs();
       unsubNotes();
+      unsubMaterialsUsed();
+      unsubAvailableMaterials();
     };
   }, [ticket.id]);
 
@@ -846,6 +906,17 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                 <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-600" />
               )}
             </button>
+            <button
+              onClick={() => setActiveTab('materials')}
+              className={`pb-4 text-xs font-bold uppercase tracking-widest transition-all relative ${
+                activeTab === 'materials' ? 'text-emerald-600' : 'text-neutral-400 hover:text-neutral-600'
+              }`}
+            >
+              Materials
+              {activeTab === 'materials' && (
+                <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-600" />
+              )}
+            </button>
           </div>
 
           <div className="p-8 space-y-10">
@@ -1412,6 +1483,110 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                   </div>
                 </section>
               </div>
+            ) : activeTab === 'materials' ? (
+              /* Materials Tab */
+              <section className="space-y-8">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-neutral-400 uppercase tracking-widest flex items-center gap-2">
+                    <Package className="w-3 h-3" /> Materials Used for this Ticket
+                  </h4>
+                </div>
+
+                {/* Add Material Form */}
+                <div className="bg-neutral-50 p-6 rounded-2xl border border-black/5 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Select Material</label>
+                      <select
+                        value={selectedMaterialId}
+                        onChange={(e) => setSelectedMaterialId(e.target.value)}
+                        className="w-full px-4 py-2 bg-white border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all text-sm"
+                      >
+                        <option value="">Choose material...</option>
+                        {availableMaterials.map(m => (
+                          <option key={m.id} value={m.id}>{m.name} ({m.unit}) - Rp {m.price.toLocaleString()}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Quantity</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={materialQuantity}
+                        onChange={(e) => setMaterialQuantity(parseInt(e.target.value) || 0)}
+                        className="w-full px-4 py-2 bg-white border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Unit Price (Rp)</label>
+                      <input
+                        type="number"
+                        value={materialPrice}
+                        onChange={(e) => setMaterialPrice(parseFloat(e.target.value) || 0)}
+                        className="w-full px-4 py-2 bg-white border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all text-sm"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleAddMaterial}
+                    disabled={!selectedMaterialId || materialQuantity <= 0}
+                    className="w-full py-3 bg-neutral-900 text-white rounded-xl font-bold hover:bg-neutral-800 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg shadow-neutral-900/10"
+                  >
+                    <PlusCircle className="w-4 h-4" /> Add Material
+                  </button>
+                </div>
+
+                {/* Materials List */}
+                <div className="space-y-3">
+                  {materialsUsed.length > 0 ? (
+                    materialsUsed.map((m) => (
+                      <div key={m.id} className="flex items-center justify-between p-4 bg-white rounded-2xl border border-black/5 shadow-sm group">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 bg-neutral-100 rounded-xl flex items-center justify-center text-neutral-400">
+                            <Package className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-neutral-900">{m.name}</p>
+                            <p className="text-[10px] uppercase font-black tracking-tighter text-neutral-500">
+                              {m.quantity} Units × Rp {m.unitPrice.toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-6">
+                          <div className="text-right">
+                            <p className="text-sm font-black text-emerald-600">Rp {(m.quantity * m.unitPrice).toLocaleString()}</p>
+                            <p className="text-[9px] text-neutral-400 font-bold uppercase tracking-wider">Subtotal</p>
+                          </div>
+                          <button
+                            onClick={() => handleRemoveMaterial(m.id)}
+                            className="p-2 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-12 bg-neutral-50 rounded-3xl border border-dashed border-neutral-200">
+                      <Package className="w-12 h-12 text-neutral-300 mx-auto mb-4" />
+                      <p className="text-neutral-500 text-sm">No materials recorded for this ticket yet.</p>
+                    </div>
+                  )}
+
+                  {materialsUsed.length > 0 && (
+                    <div className="mt-6 p-6 bg-emerald-600 rounded-2xl text-white flex justify-between items-center shadow-xl shadow-emerald-600/20">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-white/60">Total Materials Value</p>
+                        <p className="text-2xl font-black tracking-tighter">
+                          Rp {materialsUsed.reduce((sum, m) => sum + (m.quantity * m.unitPrice), 0).toLocaleString()}
+                        </p>
+                      </div>
+                      <Package className="w-8 h-8 text-white/20" />
+                    </div>
+                  )}
+                </div>
+              </section>
             ) : activeTab === 'notes' ? (
               /* Notes Section */
               <section className="space-y-6">

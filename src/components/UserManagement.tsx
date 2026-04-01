@@ -54,11 +54,9 @@ export default function UserManagement({ profile }: UserManagementProps) {
       'adityawibowo110@gmail.com',
       'tg_98681282@telegram.bot'
     ];
-    const targetNiks = ['109786241', '436950647', '98681282'];
     
     const usersToDelete = users.filter(u => 
-      (targetEmails.includes(u.email) || targetNiks.includes(u.nik || '') || u.role === 'staf') && 
-      u.uid !== profile?.uid
+      targetEmails.includes(u.email) && u.uid !== profile?.uid
     );
 
     if (usersToDelete.length === 0) {
@@ -66,7 +64,7 @@ export default function UserManagement({ profile }: UserManagementProps) {
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to delete ${usersToDelete.length} users (Target Emails, NIKs, and all Staff)?`)) {
+    if (!window.confirm(`Are you sure you want to delete ${usersToDelete.length} specific users?`)) {
       return;
     }
 

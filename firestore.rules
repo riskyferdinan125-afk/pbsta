@@ -31,17 +31,18 @@ service cloud.firestore {
     }
 
     function isSuperAdmin() {
-      return isAuthenticated() &&
-        (request.auth.token.email == "rafandanetid@gmail.com" || 
+      return isAuthenticated() && 
+        (request.auth.token.email == "rafandanetid@gmail.com" ||
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin'));
     }
 
     function isAdmin() {
-      return isAuthenticated() &&
+      return isAuthenticated() && 
         (isSuperAdmin() || 
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' || 
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin')));
     }
 
     function isStaf() {
@@ -57,6 +58,12 @@ service cloud.firestore {
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teknisi' ||
            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'technician')));
+    }
+
+    function isTicketTechnician(ticketId) {
+      return isAuthenticated() && 
+        (exists(/databases/$(database)/documents/tickets/$(ticketId)) && 
+         request.auth.uid in get(/databases/$(database)/documents/tickets/$(ticketId)).data.technicianIds);
     }
 
     function hasRequiredFields(fields) {
@@ -269,15 +276,15 @@ service cloud.firestore {
 
     function isValidUser(data) {
       return data.uid is string &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.name is string && data.name.size() > 0 &&
              data.email is string && isValidEmail(data.email) &&
              data.role in ['superadmin', 'admin', 'staf', 'teknisi'] &&
-             (!('nik' in data) || (data.nik is string && data.nik.size() <= 20)) &&
+             (!('nik' in data) || (data.nik is string)) &&
              (!('photoURL' in data) || data.photoURL is string) &&
-             (!('telegramId' in data) || data.telegramId is string) &&
-             (!('password' in data) || (data.password is string && data.password.size() < 100)) &&
+             (!('telegramId' in data) || (data.telegramId is string || data.telegramId is number)) &&
+             (!('password' in data) || (data.password is string)) &&
              (!('availabilityStatus' in data) || data.availabilityStatus in ['Available', 'Busy', 'On Leave', 'Offline']) &&
-             (!('workingDays' in data) || (data.workingDays is list && data.workingDays.size() <= 7)) &&
+             (!('workingDays' in data) || (data.workingDays is list)) &&
              (!('workingHours' in data) || data.workingHours is string) &&
              (!('createdAt' in data) || data.createdAt is timestamp) &&
              (!('updatedAt' in data) || data.updatedAt is timestamp);
@@ -285,22 +292,16 @@ service cloud.firestore {
 
     // Rules
     match /users/{userId} {
-      allow read: if true; // Allow bot to find users by telegramId or email
-      allow create: if (isAuthenticated() && request.auth.uid == userId && 
-        isValidUser(request.resource.data) && (
-          request.resource.data.role == 'staf' || 
-          (request.resource.data.role == 'superadmin' && request.resource.data.email == "rafandanetid@gmail.com")
-        )) || (request.auth == null && isValidUser(request.resource.data) && (
-          request.resource.data.role == 'teknisi' || 
-          (request.resource.data.role == 'superadmin' && request.resource.data.email == "rafandanetid@gmail.com")
-        ));
-      allow update: if (isAuthenticated() && (
-        (request.auth.uid == userId && request.resource.data.role == resource.data.role && isValidUser(request.resource.data)) ||
-        (isSuperAdmin() && isValidUser(request.resource.data))
-      )) || (request.auth == null && isValidUser(request.resource.data) && (
-        request.resource.data.role == resource.data.role ||
-        (request.resource.data.role == 'superadmin' && request.resource.data.email == "rafandanetid@gmail.com")
-      ));
+      allow read: if true;
+      allow create: if isSuperAdmin() || (isAuthenticated() && request.auth.uid == userId);
+      allow update: if (
+        isAuthenticated() && (
+          request.auth.token.email == "rafandanetid@gmail.com" || 
+          isSuperAdmin() || 
+          (request.auth.uid == userId && 
+           (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])))
+        )
+      ) && isValidUser(request.resource.data);
       allow delete: if isSuperAdmin();
     }
 
@@ -328,6 +329,11 @@ service cloud.firestore {
       allow create: if isValidTicket(request.resource.data); // Enforce validation on create
       allow update: if (isAdmin() || isTechnician() || request.auth == null) && isValidTicket(request.resource.data);
       allow delete: if isAdmin();
+
+      match /materialsUsed/{materialId} {
+        allow read: if true;
+        allow create, update, delete: if (isAdmin() || isTicketTechnician(ticketId) || request.auth == null);
+      }
     }
 
     match /ticketCategories/{categoryId} {
@@ -354,19 +360,19 @@ service cloud.firestore {
         request.auth.uid == resource.data.userId || 
         (resource.data.userId == 'admin' && isAdmin())
       ) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'updatedAt']);
-      allow create: if isAuthenticated() && isValidNotification(request.resource.data);
+      allow create: if (isAuthenticated() || request.auth == null) && isValidNotification(request.resource.data);
     }
 
     match /materials/{materialId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create, delete: if isAdmin();
-      allow update: if isAdmin() || isTechnician();
+      allow update: if isAdmin() || isTechnician() || request.auth == null;
     }
 
     match /repairRecords/{recordId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create: if (isTechnician() || request.auth == null) && isValidRepairRecord(request.resource.data);
-      allow update: if isTechnician() && isValidRepairRecord(request.resource.data);
+      allow update: if (isTechnician() || request.auth == null) && isValidRepairRecord(request.resource.data);
       allow delete: if isAdmin();
     }
 

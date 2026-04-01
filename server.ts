@@ -71,6 +71,16 @@ try {
 let bot: TelegramBot | null = null;
 const projectSessions = new Map<number, { projectId?: string, jobId?: string, stage?: string }>();
 const ticketSessions = new Map<number, { category?: string, subCategory?: string, stage?: string }>();
+const repairSessions = new Map<number, { 
+  command: 'progres' | 'close',
+  stage: string,
+  customerId?: string,
+  repairType?: 'Logic' | 'Physical',
+  rootCause?: string,
+  repairAction?: string,
+  materials?: { id: string, name: string, quantity: number }[],
+  photoId?: string
+}>();
 
 const TICKET_CATEGORIES: Record<string, string[]> = {
   'PROJECT': ['DISTRIBUSI', 'FEEDER', 'ODC', 'ODP'],
@@ -411,6 +421,111 @@ async function initTelegramBot() {
     });
 
     // Helper for processing field updates (progres/close)
+    async function finalizeRepair(chatId: number, session: any, photoId: string) {
+      try {
+        const isClosure = session.command === 'close';
+        const photoUrl = `/api/telegram-photo/${photoId}`;
+        
+        // 1. Find Customer & Ticket
+        const custQuery = query(collection(db, 'customers'), where('customerId', '==', session.customerId));
+        const custSnap = await getDocs(custQuery);
+        if (custSnap.empty) throw new Error("Customer not found");
+        const customerDoc = custSnap.docs[0];
+        
+        const ticketQuery = query(collection(db, 'tickets'), where('customerId', '==', customerDoc.id), where('status', '!=', 'closed'));
+        const ticketSnap = await getDocs(ticketQuery);
+        if (ticketSnap.empty) throw new Error("Active ticket not found");
+        const targetTicket = ticketSnap.docs[0];
+
+        // 2. Verify User
+        const userDoc = await getAuthorizedUser(chatId);
+        if (!userDoc) throw new Error("User not authorized");
+
+        // 3. Deduct Materials
+        const materialsUsed = [];
+        if (session.materials) {
+          for (const mat of session.materials) {
+            const matRef = doc(db, 'materials', mat.id);
+            const matSnap = await getDoc(matRef);
+            if (matSnap.exists()) {
+              const matData = matSnap.data();
+              const newQty = (matData.quantity || 0) - mat.quantity;
+              await updateDoc(matRef, {
+                quantity: newQty,
+                lastUsedAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+              });
+              
+              materialsUsed.push({
+                materialId: mat.id,
+                name: mat.name,
+                quantity: mat.quantity,
+                unit: matData.unit
+              });
+
+              if (newQty <= 5) {
+                await addDoc(collection(db, 'notifications'), {
+                  userId: 'superadmin',
+                  title: 'Low Stock Alert',
+                  message: `Material ${matData.name} is low on stock (${newQty} ${matData.unit} left).`,
+                  type: 'low_stock',
+                  read: false,
+                  createdAt: serverTimestamp()
+                });
+              }
+            }
+          }
+        }
+
+        // 4. Create Repair Record
+        const techIds = targetTicket.data().technicianIds || [];
+        const primaryTechId = techIds[0] || userDoc.id;
+
+        await addDoc(collection(db, 'repairRecords'), {
+          ticketId: targetTicket.id,
+          technicianId: primaryTechId,
+          startTime: serverTimestamp(),
+          endTime: isClosure ? serverTimestamp() : null,
+          type: session.repairType,
+          rootCause: session.rootCause,
+          repairAction: session.repairAction,
+          evidencePhoto: photoUrl,
+          materialsUsed: materialsUsed,
+          createdAt: serverTimestamp()
+        });
+
+        // 5. Update Ticket
+        const ticketUpdates: any = { updatedAt: serverTimestamp() };
+        if (isClosure) {
+          ticketUpdates.status = 'closed';
+          ticketUpdates.afterPhoto = photoUrl;
+        } else {
+          ticketUpdates.beforePhoto = photoUrl;
+        }
+        await updateDoc(targetTicket.ref, ticketUpdates);
+
+        // 6. Create Field Entry
+        const collectionName = isClosure ? 'fieldClosures' : 'fieldProgress';
+        await addDoc(collection(db, collectionName), {
+          customerId: session.customerId,
+          ticketNumber: targetTicket.data().ticketNumber,
+          cause: session.rootCause,
+          action: session.repairAction,
+          photoUrl: photoUrl,
+          chatId,
+          reportedBy: userDoc.id,
+          createdAt: serverTimestamp()
+        });
+
+        bot?.sendMessage(chatId, `✅ *Berhasil!*\n\n${isClosure ? 'Tiket telah ditutup.' : 'Progres telah diperbarui.'}\n\nCustomer: ${customerDoc.data().name}\nNo Tiket: #${targetTicket.data().ticketNumber}`, { parse_mode: 'Markdown' });
+        repairSessions.delete(chatId);
+      } catch (e: any) {
+        console.error("Error finalizing repair:", e);
+        bot?.sendMessage(chatId, `❌ *Gagal memproses perbaikan!*\n\nError: ${e.message}`);
+      }
+    }
+
+    // Helper for processing field updates (progres/close)
     async function processFieldUpdate(chatId: number, text: string, photoId?: string) {
       const isClosure = text.toLowerCase().startsWith('/close');
       const commandType = isClosure ? 'close' : 'progres';
@@ -579,16 +694,64 @@ async function initTelegramBot() {
           });
         }
 
-        // 4. Create Repair Record if action is provided
+        // 4. Create Repair Record and Update Material Stock
         if (data.action) {
           try {
+            const materialsUsed: any[] = [];
+            
+            // Basic material parsing from text
+            if (data.materials) {
+              const materialParts = data.materials.split(',').map((p: string) => p.trim()).filter((p: string) => p.length > 0);
+              const allMaterialsSnap = await getDocs(collection(db, 'materials'));
+              const allMaterials = allMaterialsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+              
+              for (const part of materialParts) {
+                // Try to find material name and quantity in string like "Kabel 10m" or "Connector 2"
+                const match = part.match(/(.*?)\s*(\d+)\s*(\w+)?/);
+                if (match) {
+                  const name = match[1].trim().toLowerCase();
+                  const qty = parseInt(match[2]);
+                  
+                  const found = allMaterials.find(m => m.name.toLowerCase().includes(name) || name.includes(m.name.toLowerCase()));
+                  if (found && !isNaN(qty)) {
+                    materialsUsed.push({
+                      materialId: found.id,
+                      name: found.name,
+                      quantity: qty,
+                      unit: found.unit
+                    });
+                    
+                    // Deduct stock
+                    const newQty = (found.quantity || 0) - qty;
+                    await updateDoc(doc(db, 'materials', found.id), {
+                      quantity: newQty,
+                      lastUsedAt: serverTimestamp(),
+                      updatedAt: serverTimestamp()
+                    });
+                    
+                    // Create notification for low stock
+                    if (newQty <= 5) {
+                      await addDoc(collection(db, 'notifications'), {
+                        userId: 'superadmin', // Or notify all admins
+                        title: 'Low Stock Alert',
+                        message: `Material ${found.name} is low on stock (${newQty} ${found.unit} left).`,
+                        type: 'low_stock',
+                        read: false,
+                        createdAt: serverTimestamp()
+                      });
+                    }
+                  }
+                }
+              }
+            }
+
             await addDoc(collection(db, 'repairRecords'), {
               ticketId: targetTicket.id,
               technicianId: primaryTechId || 'unknown',
               startTime: serverTimestamp(),
               endTime: isClosure ? serverTimestamp() : null,
               notes: data.action,
-              materialsUsed: [], 
+              materialsUsed: materialsUsed, 
               beforePhoto: (!isClosure && data.photoUrl) ? data.photoUrl : null,
               afterPhoto: (isClosure && data.photoUrl) ? data.photoUrl : null,
               createdAt: serverTimestamp()
@@ -784,6 +947,239 @@ async function initTelegramBot() {
             parse_mode: 'Markdown'
           });
         }
+
+        // Repair Session Callbacks
+        if (data.startsWith('rep_type_')) {
+          bot.answerCallbackQuery(query.id);
+          const type = data.replace('rep_type_', '') as 'Logic' | 'Physical';
+          const session = repairSessions.get(chatId);
+          if (!session) return;
+          
+          if (type === 'Logic') {
+            repairSessions.set(chatId, { ...session, repairType: type, stage: 'waiting_cause' });
+            const messageText = "⚙️ *Tipe: Logic*\n\n🔍 *Penyebab Gangguan (Root Cause)*:\n\nApa penyebab gangguannya?";
+            const messageId = query.message?.message_id;
+
+            if (messageId) {
+              bot.editMessageText(messageText, {
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'Markdown'
+              }).catch(err => {
+                console.error("Error editing message for Logic type:", err);
+                bot.sendMessage(chatId, messageText, { parse_mode: 'Markdown' });
+              });
+            } else {
+              bot.sendMessage(chatId, messageText, { parse_mode: 'Markdown' });
+            }
+          } else {
+            console.log(`[Bot] Fetching materials for Physical repair session from ${chatId}`);
+            if (!db) {
+              bot.sendMessage(chatId, "❌ *Database Error*\n\nKoneksi ke database belum siap. Silakan coba lagi nanti.");
+              return;
+            }
+            
+            try {
+              const matSnap = await getDocs(collection(db, 'materials'));
+              const materials = matSnap.docs
+                .map(doc => ({ 
+                  id: doc.id, 
+                  name: String(doc.data().name || 'Unnamed Material') 
+                }))
+                .filter(m => m.name !== 'Unnamed Material' || m.id); // Keep even if unnamed but has ID, but usually we want names
+              
+              if (materials.length === 0) {
+                bot.sendMessage(chatId, "⚠️ *Material Kosong*\n\nTidak ada data material yang ditemukan di sistem. Silakan hubungi admin.");
+                repairSessions.set(chatId, { ...session, repairType: type, stage: 'waiting_cause' });
+                bot.editMessageText("🛠️ *Tipe: Fisik*\n\n(Tidak ada material ditemukan)\n\n🔍 *Penyebab Gangguan (Root Cause)*:\n\nApa penyebab gangguannya?", {
+                  chat_id: chatId,
+                  message_id: query.message?.message_id,
+                  parse_mode: 'Markdown'
+                });
+                return;
+              }
+
+              repairSessions.set(chatId, { ...session, repairType: type, stage: 'waiting_materials' });
+              const keyboard = [];
+              for (let i = 0; i < materials.length; i += 2) {
+                const row = [{ text: String(materials[i].name), callback_data: `rep_mat_${materials[i].id}` }];
+                if (materials[i+1]) {
+                  row.push({ text: String(materials[i+1].name), callback_data: `rep_mat_${materials[i+1].id}` });
+                }
+                keyboard.push(row);
+              }
+              keyboard.push([{ text: '➡️ Lanjut ke Penyebab', callback_data: 'rep_next_to_cause' }]);
+
+              console.log(`[Bot] Sending material keyboard to ${chatId}:`, JSON.stringify(keyboard));
+
+              const messageText = "🛠️ *Tipe: Fisik*\n\n📦 *Pilih Material*:";
+              const messageId = query.message?.message_id;
+
+              if (messageId) {
+                try {
+                  await bot.editMessageText(messageText, {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    parse_mode: 'Markdown',
+                    reply_markup: { inline_keyboard: keyboard }
+                  });
+                } catch (editError: any) {
+                  console.error("[Bot] editMessageText failed:", editError.message);
+                  if (!editError.message.includes('message is not modified')) {
+                    bot.sendMessage(chatId, messageText, {
+                      parse_mode: 'Markdown',
+                      reply_markup: { inline_keyboard: keyboard }
+                    }).catch(sendErr => console.error("[Bot] Fallback sendMessage failed:", sendErr.message));
+                  }
+                }
+              } else {
+                bot.sendMessage(chatId, messageText, {
+                  parse_mode: 'Markdown',
+                  reply_markup: { inline_keyboard: keyboard }
+                }).catch(sendErr => console.error("[Bot] Direct sendMessage failed:", sendErr.message));
+              }
+            } catch (matErr: any) {
+              console.error("Error fetching materials:", matErr);
+              bot.sendMessage(chatId, `❌ *Gagal mengambil data material*\n\nError: ${matErr.message}`);
+            }
+          }
+        }
+
+        if (data.startsWith('rep_mat_')) {
+          bot.answerCallbackQuery(query.id);
+          const matId = data.replace('rep_mat_', '');
+          const session = repairSessions.get(chatId);
+          if (!session) return;
+
+          const matDoc = await getDoc(doc(db, 'materials', matId));
+          if (!matDoc.exists()) {
+            bot.sendMessage(chatId, "❌ *Material tidak ditemukan.*");
+            return;
+          }
+
+          const matName = String(matDoc.data().name || 'Unnamed Material');
+          const materials = session.materials || [];
+          // Avoid duplicate selection
+          if (materials.some(m => m.id === matId)) {
+            bot.sendMessage(chatId, `⚠️ *Material ${matName} sudah dipilih.*`);
+            return;
+          }
+
+          materials.push({ id: matId, name: matName, quantity: 0 });
+          
+          repairSessions.set(chatId, { ...session, materials, stage: 'waiting_material_quantity' });
+          const messageText = `📦 *Material: ${matName}*\n\nSilakan masukkan *Jumlah (Quantity)*:`;
+          const messageId = query.message?.message_id;
+
+          if (messageId) {
+            try {
+              await bot.editMessageText(messageText, {
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'Markdown'
+              });
+            } catch (editError: any) {
+              console.error("[Bot] editMessageText failed for quantity:", editError.message);
+              if (!editError.message.includes('message is not modified')) {
+                bot.sendMessage(chatId, messageText, { parse_mode: 'Markdown' });
+              }
+            }
+          } else {
+            bot.sendMessage(chatId, messageText, { parse_mode: 'Markdown' });
+          }
+        }
+
+        if (data === 'rep_add_more_mat') {
+          console.log(`[Bot] Add more material requested by ${chatId}`);
+          bot.answerCallbackQuery(query.id);
+          const session = repairSessions.get(chatId);
+          if (!session) return;
+
+          if (!db) {
+            bot.sendMessage(chatId, "❌ *Database Error*\n\nKoneksi ke database belum siap.");
+            return;
+          }
+
+          try {
+            const matSnap = await getDocs(collection(db, 'materials'));
+            const selectedIds = session.materials?.map((m: any) => m.id) || [];
+            const materials = matSnap.docs
+              .map(doc => ({ 
+                id: doc.id, 
+                name: String(doc.data().name || 'Unnamed Material') 
+              }))
+              .filter(m => !selectedIds.includes(m.id));
+
+            if (materials.length === 0) {
+              bot.sendMessage(chatId, "⚠️ *Semua material sudah dipilih* atau tidak ada material lain.");
+              repairSessions.set(chatId, { ...session, stage: 'waiting_cause' });
+              bot.sendMessage(chatId, "🔍 *Penyebab Gangguan (Root Cause)*:\n\nApa penyebab gangguannya?", { parse_mode: 'Markdown' });
+              return;
+            }
+
+            repairSessions.set(chatId, { ...session, stage: 'waiting_materials' });
+            const keyboard = [];
+          for (let i = 0; i < materials.length; i += 2) {
+            const row = [{ text: materials[i].name, callback_data: `rep_mat_${materials[i].id}` }];
+            if (materials[i+1]) row.push({ text: materials[i+1], callback_data: `rep_mat_${materials[i+1].id}` });
+            keyboard.push(row);
+          }
+          keyboard.push([{ text: '➡️ Lanjut ke Penyebab', callback_data: 'rep_next_to_cause' }]);
+
+            const messageText = "📦 *Pilih Material Tambahan*:";
+            const messageId = query.message?.message_id;
+
+            if (messageId) {
+              try {
+                await bot.editMessageText(messageText, {
+                  chat_id: chatId,
+                  message_id: messageId,
+                  parse_mode: 'Markdown',
+                  reply_markup: { inline_keyboard: keyboard }
+                });
+              } catch (editError: any) {
+                console.error("[Bot] editMessageText failed for add more:", editError.message);
+                if (!editError.message.includes('message is not modified')) {
+                  bot.sendMessage(chatId, messageText, {
+                    parse_mode: 'Markdown',
+                    reply_markup: { inline_keyboard: keyboard }
+                  });
+                }
+              }
+            } else {
+              bot.sendMessage(chatId, messageText, {
+                parse_mode: 'Markdown',
+                reply_markup: { inline_keyboard: keyboard }
+              });
+            }
+        }
+
+        if (data === 'rep_next_to_cause') {
+          bot.answerCallbackQuery(query.id);
+          const session = repairSessions.get(chatId);
+          if (!session) return;
+
+          repairSessions.set(chatId, { ...session, stage: 'waiting_cause' });
+          const messageText = "🔍 *Penyebab Gangguan (Root Cause)*:\n\nApa penyebab gangguannya?";
+          const messageId = query.message?.message_id;
+
+          if (messageId) {
+            try {
+              await bot.editMessageText(messageText, {
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'Markdown'
+              });
+            } catch (editError: any) {
+              console.error("[Bot] editMessageText failed for next to cause:", editError.message);
+              if (!editError.message.includes('message is not modified')) {
+                bot.sendMessage(chatId, messageText, { parse_mode: 'Markdown' });
+              }
+            }
+          } else {
+            bot.sendMessage(chatId, messageText, { parse_mode: 'Markdown' });
+          }
+        }
       } catch (e) {
         console.error("Error in callback_query:", e);
       }
@@ -792,6 +1188,15 @@ async function initTelegramBot() {
     // Handle photos for projects
     bot.on('photo', async (msg) => {
       const chatId = msg.chat.id;
+      
+      // Check for repair session evidence
+      const repairSession = repairSessions.get(chatId);
+      if (repairSession && repairSession.stage === 'waiting_evidence') {
+        const photo = msg.photo![msg.photo!.length - 1];
+        await finalizeRepair(chatId, repairSession, photo.file_id);
+        return;
+      }
+
       const session = projectSessions.get(chatId);
       
       if (!session || !session.projectId || !session.stage) {
@@ -861,16 +1266,44 @@ async function initTelegramBot() {
       }
     });
 
+    // /material command
+    bot.onText(/^\/material/i, async (msg) => {
+      const chatId = msg.chat.id;
+      try {
+        const matSnap = await getDocs(collection(db, 'materials'));
+        if (matSnap.empty) {
+          bot.sendMessage(chatId, "📭 *Tidak ada data material* di sistem.", { parse_mode: 'Markdown' });
+          return;
+        }
+
+        let response = "📦 *Daftar Stok Material* 📦\n\n";
+        matSnap.docs.forEach(doc => {
+          const data = doc.data();
+          const status = (data.quantity || 0) <= (data.minQuantity || 5) ? "⚠️" : "✅";
+          response += `${status} *${data.name}*\n`;
+          response += `   Stok: \`${data.quantity || 0} ${data.unit || ''}\`\n`;
+          response += `   Min: \`${data.minQuantity || 0}\` | Harga: \`Rp ${data.price?.toLocaleString() || 0}\`\n\n`;
+        });
+
+        bot.sendMessage(chatId, response, { parse_mode: 'Markdown' });
+      } catch (e: any) {
+        console.error("Error in /material command:", e);
+        bot.sendMessage(chatId, `❌ *Gagal mengambil data material!*\n\nError: ${e.message}`);
+      }
+    });
+
     // /progres command
     bot.onText(/^\/progres/i, async (msg) => {
-      if (msg.photo) return; // Handled by on('photo')
-      processFieldUpdate(msg.chat.id, msg.text || '');
+      const chatId = msg.chat.id;
+      repairSessions.set(chatId, { command: 'progres', stage: 'waiting_customer_id' });
+      bot.sendMessage(chatId, "🛠️ *Progres Tiket* 🛠️\n\nSilakan masukkan *Customer ID*:", { parse_mode: 'Markdown' });
     });
 
     // /close command
     bot.onText(/^\/close/i, async (msg) => {
-      if (msg.photo) return; // Handled by on('photo')
-      processFieldUpdate(msg.chat.id, msg.text || '');
+      const chatId = msg.chat.id;
+      repairSessions.set(chatId, { command: 'close', stage: 'waiting_customer_id' });
+      bot.sendMessage(chatId, "✅ *Tutup Tiket* ✅\n\nSilakan masukkan *Customer ID*:", { parse_mode: 'Markdown' });
     });
 
     // Handle photos with captions (for /close and /progres)
@@ -878,6 +1311,15 @@ async function initTelegramBot() {
       const chatId = msg.chat.id;
       const caption = (msg.caption || '').trim();
       
+      // Check for active interactive session
+      const repairSession = repairSessions.get(chatId);
+      if (repairSession && repairSession.stage === 'waiting_evidence') {
+        const photo = msg.photo![msg.photo!.length - 1];
+        await finalizeRepair(chatId, repairSession, photo.file_id);
+        repairSessions.delete(chatId);
+        return;
+      }
+
       if (!caption.toLowerCase().startsWith('/close') && !caption.toLowerCase().startsWith('/progres')) return;
 
       const photo = msg.photo![msg.photo!.length - 1];
@@ -1193,6 +1635,100 @@ async function initTelegramBot() {
         await handleTicketCreation(chatId, session.category!, session.subCategory!, text.trim());
         ticketSessions.delete(chatId);
         return;
+      }
+
+      // Handle repair session (interactive flow)
+      const repairSession = repairSessions.get(chatId);
+      if (repairSession && !text.startsWith('/')) {
+        try {
+          if (repairSession.stage === 'waiting_customer_id') {
+            const customerId = text.trim();
+            // Verify customer and ticket
+            const custQuery = query(collection(db, 'customers'), where('customerId', '==', customerId));
+            const custSnap = await getDocs(custQuery);
+            if (custSnap.empty) {
+              bot.sendMessage(chatId, `❌ *Customer Tidak Ditemukan!*\n\nCustomer ID \`${customerId}\` tidak terdaftar. Silakan masukkan ID yang benar:`, { parse_mode: 'Markdown' });
+              return;
+            }
+            
+            const customerDoc = custSnap.docs[0];
+            const ticketQuery = query(collection(db, 'tickets'), where('customerId', '==', customerDoc.id), where('status', '!=', 'closed'));
+            const ticketSnap = await getDocs(ticketQuery);
+            
+            if (ticketSnap.empty) {
+              bot.sendMessage(chatId, `⚠️ *Tidak Ada Tiket Aktif!*\n\nCustomer \`${customerDoc.data().name}\` tidak memiliki tiket yang sedang terbuka. Silakan masukkan ID lain:`, { parse_mode: 'Markdown' });
+              return;
+            }
+
+            repairSessions.set(chatId, { ...repairSession, customerId, stage: 'waiting_repair_type' });
+            bot.sendMessage(chatId, `✅ *Customer: ${customerDoc.data().name}*\n\nSilakan pilih *Tipe Perbaikan*:`, {
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    { text: '⚙️ Logic', callback_data: 'rep_type_Logic' },
+                    { text: '🛠️ Fisik', callback_data: 'rep_type_Physical' }
+                  ]
+                ]
+              }
+            });
+            return;
+          }
+
+          if (repairSession.stage === 'waiting_material_quantity') {
+            const qty = parseInt(text.trim());
+            if (isNaN(qty) || qty <= 0) {
+              bot.sendMessage(chatId, "⚠️ *Jumlah tidak valid!*\n\nMasukkan angka positif:");
+              return;
+            }
+            
+            const materials = repairSession.materials || [];
+            const lastMaterial = materials[materials.length - 1];
+            
+            if (lastMaterial) {
+              // Stock validation
+              const matDoc = await getDoc(doc(db, 'materials', lastMaterial.id));
+              if (matDoc.exists()) {
+                const currentStock = matDoc.data().quantity || 0;
+                if (qty > currentStock) {
+                  bot.sendMessage(chatId, `⚠️ *Stok tidak mencukupi!*\n\nStok saat ini: \`${currentStock} ${matDoc.data().unit}\`.\n\nSilakan masukkan jumlah yang valid:`, { parse_mode: 'Markdown' });
+                  return;
+                }
+                lastMaterial.quantity = qty;
+              }
+            }
+            
+            repairSessions.set(chatId, { ...repairSession, materials, stage: 'waiting_materials' });
+            
+            // Ask if more materials or continue
+            bot.sendMessage(chatId, `✅ *Material ditambahkan.*\n\nApakah ada material lain?`, {
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    { text: '➕ Tambah Lagi', callback_data: 'rep_add_more_mat' },
+                    { text: '➡️ Lanjut ke Penyebab', callback_data: 'rep_next_to_cause' }
+                  ]
+                ]
+              }
+            });
+            return;
+          }
+
+          if (repairSession.stage === 'waiting_cause') {
+            repairSessions.set(chatId, { ...repairSession, rootCause: text.trim(), stage: 'waiting_action' });
+            bot.sendMessage(chatId, "🔧 *Perbaikan Gangguan (Repair Action)*:\n\nApa tindakan perbaikan yang dilakukan?");
+            return;
+          }
+
+          if (repairSession.stage === 'waiting_action') {
+            repairSessions.set(chatId, { ...repairSession, repairAction: text.trim(), stage: 'waiting_evidence' });
+            bot.sendMessage(chatId, "📸 *Eviden Perbaikan*:\n\nSilakan kirim *FOTO EVIDEN* perbaikan:");
+            return;
+          }
+        } catch (e) {
+          console.error("Error in repair session message handler:", e);
+        }
       }
 
       if (!text.startsWith('/')) return;

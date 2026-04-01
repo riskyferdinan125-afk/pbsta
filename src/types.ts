@@ -188,6 +188,10 @@ export interface RepairRecord {
   technicianId: string;
   startTime: Timestamp;
   endTime?: Timestamp;
+  type: 'Logic' | 'Physical';
+  rootCause: string;
+  repairAction: string;
+  evidencePhoto?: string;
   notes: string;
   materialsUsed: MaterialUsage[];
   jobsUsed?: JobUsage[];
