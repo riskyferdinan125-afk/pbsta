@@ -141,6 +141,7 @@
         "designator": { "type": "string", "description": "Job designator code" },
         "name": { "type": "string", "description": "Job name" },
         "unit": { "type": "string", "description": "Unit of measurement" },
+        "category": { "type": "string", "description": "Job category (e.g., FTTH, OSP)" },
         "materialPrice": { "type": "number", "description": "Material price component" },
         "servicePrice": { "type": "number", "description": "Service/Labor price component" },
         "price": { "type": "number", "description": "Total price (Material + Service)" }

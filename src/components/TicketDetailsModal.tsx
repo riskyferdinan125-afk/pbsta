@@ -14,9 +14,13 @@ import {
   preventiveSubCategoryWeights
 } from '../weights';
 import { Ticket, TicketHistory, Technician, Customer, TicketStatus, TicketPriority, TicketCategory, RepairRecord, TicketNote, UserProfile, ChecklistItem, Notification, Material } from '../types';
-import { X, Edit2, Check, TrendingUp, Clock, User, ArrowRight, History, Info, Wrench, Send, MessageSquare, UserPlus, RefreshCw, PlusCircle, Link as LinkIcon, AlertTriangle, CheckCircle, Package, StickyNote, ChevronRight, Loader2, Hash, Box, MapPin, Phone, Mail, Camera, Play, Square, Navigation, Timer, HelpCircle, Trash2 } from 'lucide-react';
+import { X, Edit2, Check, TrendingUp, Clock, User, ArrowRight, History, Info, Wrench, Send, MessageSquare, UserPlus, RefreshCw, PlusCircle, Link as LinkIcon, AlertTriangle, CheckCircle, Package, StickyNote, ChevronRight, Loader2, Hash, Box, MapPin, Phone, Mail, Camera, Play, Square, Navigation, Timer, HelpCircle, Trash2, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from './Toast';
+import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
+
+const API_KEY = process.env.GOOGLE_MAPS_PLATFORM_KEY || '';
+const hasValidMapsKey = Boolean(API_KEY) && API_KEY !== '';
 
 import DependencyManagerModal from './DependencyManagerModal';
 import TechnicianGuide from './TechnicianGuide';
@@ -48,6 +52,9 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [newChecklistItem, setNewChecklistItem] = useState('');
   const [statusComment, setStatusComment] = useState('');
+
+  const assignedTechnicians = technicians.filter(tech => ticket.technicianIds?.includes(tech.id));
+  const hasLocationData = assignedTechnicians.some(tech => tech.location);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<TicketStatus | null>(null);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
@@ -1178,6 +1185,90 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                         </div>
                       </div>
                     </div>
+
+                    {/* Technician Location Map */}
+                    {assignedTechnicians.length > 0 && hasLocationData && (
+                      <div className="col-span-2 space-y-3 mt-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-bold text-neutral-400 uppercase tracking-widest flex items-center gap-2">
+                            <Navigation className="w-3 h-3" /> Technician Live Location
+                          </h4>
+                          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">
+                            Live Tracking Active
+                          </span>
+                        </div>
+                        
+                        <div className="h-64 rounded-2xl overflow-hidden border border-black/5 shadow-inner bg-neutral-100 relative">
+                          {hasValidMapsKey ? (
+                            <APIProvider apiKey={API_KEY} version="weekly">
+                              <Map
+                                defaultCenter={assignedTechnicians.find(t => t.location)?.location || { lat: -6.2, lng: 106.8 }}
+                                defaultZoom={14}
+                                mapId="TECHNICIAN_TRACKING_MAP"
+                                // @ts-ignore
+                                internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
+                                style={{ width: '100%', height: '100%' }}
+                              >
+                                {assignedTechnicians.map(tech => tech.location && (
+                                  <AdvancedMarker 
+                                    key={tech.id} 
+                                    position={{ lat: tech.location.lat, lng: tech.location.lng }}
+                                  >
+                                    <Pin background="#10b981" glyphColor="#fff" borderColor="#065f46" />
+                                    <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-white px-2 py-1 rounded-lg shadow-lg border border-black/5 text-[10px] font-bold whitespace-nowrap flex items-center gap-2">
+                                      <div className="w-4 h-4 rounded-full overflow-hidden border border-black/5">
+                                        <img 
+                                          src={tech.photoURL || `https://ui-avatars.com/api/?name=${tech.name}`} 
+                                          alt={tech.name} 
+                                          className="w-full h-full object-cover"
+                                          referrerPolicy="no-referrer"
+                                        />
+                                      </div>
+                                      {tech.name}
+                                    </div>
+                                  </AdvancedMarker>
+                                ))}
+                              </Map>
+                            </APIProvider>
+                          ) : (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+                              <MapPin className="w-10 h-10 text-neutral-300 mb-2" />
+                              <p className="text-sm text-neutral-500 font-medium">Map tracking is unavailable. Please configure Google Maps API key.</p>
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {assignedTechnicians.filter(t => t.location).map(tech => (
+                            <div key={tech.id} className="flex items-center gap-3 p-3 bg-neutral-50 rounded-xl border border-black/5">
+                              <div className="w-10 h-10 rounded-lg overflow-hidden border border-black/5">
+                                <img 
+                                  src={tech.photoURL || `https://ui-avatars.com/api/?name=${tech.name}`} 
+                                  alt={tech.name} 
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold text-neutral-900 truncate">{tech.name}</p>
+                                <p className="text-[10px] text-neutral-500 flex items-center gap-1">
+                                  <Clock className="w-2.5 h-2.5" />
+                                  Last seen: {tech.location?.updatedAt?.toDate().toLocaleTimeString() || 'Just now'}
+                                </p>
+                              </div>
+                              <a 
+                                href={`https://www.google.com/maps?q=${tech.location?.lat},${tech.location?.lng}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2 bg-white text-neutral-400 hover:text-indigo-600 rounded-lg border border-black/5 transition-all"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <div className="space-y-1">
                       <p className="text-xs text-neutral-500">Timeline</p>
                       <div className="space-y-2 p-3 bg-white rounded-xl border border-black/5">

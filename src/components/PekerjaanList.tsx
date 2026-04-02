@@ -32,6 +32,7 @@ export default function PekerjaanList() {
     designator: '',
     name: '',
     unit: '',
+    category: '',
     materialPrice: 0,
     servicePrice: 0,
     price: 0
@@ -129,6 +130,7 @@ export default function PekerjaanList() {
         designator: job.designator || '',
         name: job.name,
         unit: job.unit || '',
+        category: job.category || '',
         materialPrice: job.materialPrice || 0,
         servicePrice: job.servicePrice || 0,
         price: job.price
@@ -139,6 +141,7 @@ export default function PekerjaanList() {
         designator: '',
         name: '',
         unit: '',
+        category: '',
         materialPrice: 0,
         servicePrice: 0,
         price: 0
@@ -154,6 +157,7 @@ export default function PekerjaanList() {
       designator: '',
       name: '',
       unit: '',
+      category: '',
       materialPrice: 0,
       servicePrice: 0,
       price: 0
@@ -179,6 +183,7 @@ export default function PekerjaanList() {
       'Designator': j.designator,
       'Nama Pekerjaan': j.name,
       'Satuan': j.unit,
+      'Kategori': j.category,
       'Harga Material (Rp)': j.materialPrice,
       'Harga Jasa (Rp)': j.servicePrice,
       'Total Harga (Rp)': j.price
@@ -219,6 +224,7 @@ export default function PekerjaanList() {
           const name = row['Nama Pekerjaan'] || row['Pekerjaan'] || row['Name'] || row['nama_pekerjaan'];
           const designator = String(row['Designator'] || row['Code'] || row['designator'] || row['kode'] || '');
           const unit = String(row['Satuan'] || row['Unit'] || row['satuan'] || '');
+          const category = String(row['Kategori'] || row['Category'] || row['kategori'] || '');
           
           // Ensure prices are numbers and not NaN
           const rawMaterialPrice = row['Harga Material (Rp)'] || row['Material'] || row['material_price'] || row['harga_material'] || 0;
@@ -233,6 +239,7 @@ export default function PekerjaanList() {
               designator: designator.trim(),
               name: name.trim(),
               unit: unit.trim(),
+              category: category.trim(),
               materialPrice,
               servicePrice,
               price: materialPrice + servicePrice,
@@ -267,6 +274,7 @@ export default function PekerjaanList() {
       'Designator': 'KBL-01',
       'Nama Pekerjaan': 'Instalasi Kabel Fiber Optic',
       'Satuan': 'Meter',
+      'Kategori': 'FTTH',
       'Harga Material (Rp)': 15000,
       'Harga Jasa (Rp)': 5000
     }];
@@ -376,6 +384,7 @@ export default function PekerjaanList() {
               <th className="px-6 py-4">Designator</th>
               <th className="px-6 py-4">BOQ REKONSILIASI</th>
               <th className="px-6 py-4">Satuan</th>
+              <th className="px-6 py-4">Kategori</th>
               <th className="px-6 py-4">Material (Rp)</th>
               <th className="px-6 py-4">Jasa (Rp)</th>
               <th className="px-6 py-4">Total (Rp)</th>
@@ -410,6 +419,9 @@ export default function PekerjaanList() {
                 </td>
                 <td className="px-6 py-4 text-neutral-600">
                   {job.unit || '-'}
+                </td>
+                <td className="px-6 py-4 text-neutral-600">
+                  {job.category || '-'}
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-1 text-neutral-900 font-medium">
@@ -556,6 +568,16 @@ export default function PekerjaanList() {
                       placeholder="Contoh: Meter"
                     />
                   </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">Kategori</label>
+                  <input
+                    type="text"
+                    value={formData.category}
+                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                    className="w-full px-4 py-2 border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                    placeholder="Contoh: FTTH, OSP, dll"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-1">Nama Pekerjaan</label>

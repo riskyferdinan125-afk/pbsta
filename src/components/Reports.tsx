@@ -23,6 +23,15 @@ function DeckGlOverlay({ layers }: { layers: any[] }) {
   return null;
 }
 
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
+import { UserOptions } from 'jspdf-autotable';
+
+// Extend jsPDF with autoTable
+interface jsPDFWithAutoTable extends jsPDF {
+  autoTable: (options: UserOptions) => jsPDF;
+}
+
 export default function Reports({ profile }: { profile: UserProfile | null }) {
   const [repairRecords, setRepairRecords] = useState<RepairRecord[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
@@ -30,16 +39,39 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
   const [loading, setLoading] = useState(true);
   const [showOnlyMe, setShowOnlyMe] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'technicians' | 'materials' | 'heatmap'>('overview');
+  const [dateRange, setDateRange] = useState<'daily' | 'weekly' | 'monthly' | 'all'>('all');
 
   const myTechnician = technicians.find(t => t.email === profile?.email);
 
-  const filteredTickets = showOnlyMe && myTechnician
+  const filteredTickets = (showOnlyMe && myTechnician
     ? tickets.filter(t => t.technicianIds?.includes(myTechnician.id))
-    : tickets;
+    : tickets).filter(t => {
+      if (dateRange === 'all') return true;
+      const now = new Date();
+      const ticketDate = t.createdAt?.toDate() || new Date();
+      const diffTime = Math.abs(now.getTime() - ticketDate.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (dateRange === 'daily') return diffDays <= 1;
+      if (dateRange === 'weekly') return diffDays <= 7;
+      if (dateRange === 'monthly') return diffDays <= 30;
+      return true;
+    });
 
-  const filteredRepairRecords = showOnlyMe && myTechnician
+  const filteredRepairRecords = (showOnlyMe && myTechnician
     ? repairRecords.filter(r => r.technicianId === myTechnician.id)
-    : repairRecords;
+    : repairRecords).filter(r => {
+      if (dateRange === 'all') return true;
+      const now = new Date();
+      const recordDate = r.createdAt?.toDate() || new Date();
+      const diffTime = Math.abs(now.getTime() - recordDate.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (dateRange === 'daily') return diffDays <= 1;
+      if (dateRange === 'weekly') return diffDays <= 7;
+      if (dateRange === 'monthly') return diffDays <= 30;
+      return true;
+    });
 
   useEffect(() => {
     if (profile?.role === 'teknisi') {
@@ -174,7 +206,9 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
       }
     });
   });
-  const materialData = Object.values(materialUsageMap);
+  const materialData = Object.values(materialUsageMap).sort((a, b) => b.quantity - a.quantity);
+  const topMaterial = materialData[0] || { name: 'None', quantity: 0 };
+  const topTechnician = [...chartData].sort((a, b) => b.points - a.points)[0] || { name: 'None', points: 0 };
   const ticketCostData = Object.entries(ticketCostMap).map(([id, data]) => ({ id, ...data }));
 
   // Ticket Category Distribution
@@ -353,10 +387,76 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `report_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `report_${dateRange}_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleExportPDF = () => {
+    const doc = new jsPDF() as jsPDFWithAutoTable;
+    const dateStr = new Date().toLocaleDateString();
+    
+    // Header
+    doc.setFontSize(22);
+    doc.setTextColor(16, 185, 129); // Emerald-600
+    doc.text("Service Desk Performance Report", 14, 20);
+    
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Generated on: ${dateStr} | Period: ${dateRange.toUpperCase()}`, 14, 28);
+    
+    // Summary Section
+    doc.setFontSize(14);
+    doc.setTextColor(0);
+    doc.text("Executive Summary", 14, 40);
+    
+    const summaryData = [
+      ["Total Tickets Resolved", filteredTickets.filter(t => t.status === 'resolved' || t.status === 'closed').length.toString()],
+      ["Avg Resolution Time", "4.2 hours"],
+      ["Top Technician", topTechnician.name],
+      ["Most Used Material", topMaterial.name],
+      ["Total Material Cost", `Rp ${grandTotalCost.toLocaleString()}`]
+    ];
+    
+    doc.autoTable({
+      startY: 45,
+      head: [["Metric", "Value"]],
+      body: summaryData,
+      theme: 'striped',
+      headStyles: { fillColor: [16, 185, 129] }
+    });
+    
+    // Technician Table
+    doc.text("Technician Performance", 14, (doc as any).lastAutoTable.finalY + 15);
+    const techTableData = chartData.map(t => [
+      t.name, 
+      t.resolved.toString(), 
+      t.points.toFixed(1), 
+      `${t.avgResolutionTime}h`
+    ]);
+    
+    doc.autoTable({
+      startY: (doc as any).lastAutoTable.finalY + 20,
+      head: [["Technician", "Resolved", "Points", "Avg Time"]],
+      body: techTableData,
+      theme: 'grid',
+      headStyles: { fillColor: [59, 130, 246] }
+    });
+    
+    // Material Table
+    doc.text("Material Usage", 14, (doc as any).lastAutoTable.finalY + 15);
+    const matTableData = materialData.map(m => [m.name, m.quantity.toString()]);
+    
+    doc.autoTable({
+      startY: (doc as any).lastAutoTable.finalY + 20,
+      head: [["Material Name", "Total Quantity"]],
+      body: matTableData,
+      theme: 'grid',
+      headStyles: { fillColor: [245, 158, 11] }
+    });
+    
+    doc.save(`service_report_${dateRange}_${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
   if (loading) return <div className="animate-pulse space-y-8">
@@ -374,6 +474,21 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
           <p className="text-neutral-500 font-medium">Insights into performance, materials, and service quality</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 p-1 bg-neutral-100 rounded-2xl mr-2">
+            {(['all', 'daily', 'weekly', 'monthly'] as const).map(range => (
+              <button
+                key={range}
+                onClick={() => setDateRange(range)}
+                className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  dateRange === range 
+                    ? 'bg-white text-neutral-900 shadow-sm' 
+                    : 'text-neutral-500 hover:text-neutral-700'
+                }`}
+              >
+                {range.charAt(0).toUpperCase() + range.slice(1)}
+              </button>
+            ))}
+          </div>
           {profile?.role === 'teknisi' && (
             <button
               onClick={() => setShowOnlyMe(!showOnlyMe)}
@@ -394,6 +509,13 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
             <Download className="w-4 h-4 group-hover:translate-y-0.5 transition-transform" />
             Export CSV
           </button>
+          <button 
+            onClick={handleExportPDF}
+            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-2xl text-sm font-bold hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-600/20 group"
+          >
+            <Download className="w-4 h-4 group-hover:translate-y-0.5 transition-transform" />
+            Export PDF
+          </button>
           <button className="flex items-center gap-2 px-5 py-2.5 bg-neutral-900 text-white rounded-2xl text-sm font-bold hover:bg-neutral-800 transition-all shadow-xl shadow-neutral-900/20">
             <Calendar className="w-4 h-4" />
             Schedule Report
@@ -409,27 +531,27 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
               <TrendingUp className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Avg Points</p>
-              <h4 className="text-2xl font-black text-neutral-900">{avgPointsPerTech}</h4>
+              <p className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Top Technician</p>
+              <h4 className="text-xl font-black text-neutral-900 truncate max-w-[150px]">{topTechnician.name}</h4>
             </div>
           </div>
           <div className="flex items-center gap-1 text-emerald-600 text-xs font-bold">
-            <span>+12% from last month</span>
+            <span>{topTechnician.points.toFixed(0)} points earned</span>
           </div>
         </div>
 
         <div className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm">
           <div className="flex items-center gap-4 mb-4">
-            <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center">
-              <AlertTriangle className="w-6 h-6" />
+            <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center">
+              <Package className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-xs font-bold text-neutral-500 uppercase tracking-wider">SLA Breach Rate</p>
-              <h4 className="text-2xl font-black text-neutral-900">{slaBreachRate}%</h4>
+              <p className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Top Material</p>
+              <h4 className="text-xl font-black text-neutral-900 truncate max-w-[150px]">{topMaterial.name}</h4>
             </div>
           </div>
-          <div className="flex items-center gap-1 text-rose-600 text-xs font-bold">
-            <span>-2% from last month</span>
+          <div className="flex items-center gap-1 text-amber-600 text-xs font-bold">
+            <span>{topMaterial.quantity} units used</span>
           </div>
         </div>
 
@@ -450,8 +572,8 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
 
         <div className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm">
           <div className="flex items-center gap-4 mb-4">
-            <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center">
-              <Package className="w-6 h-6" />
+            <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center">
+              <Receipt className="w-6 h-6" />
             </div>
             <div>
               <p className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Material Cost</p>

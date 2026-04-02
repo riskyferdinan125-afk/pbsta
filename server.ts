@@ -1121,7 +1121,7 @@ async function initTelegramBot() {
             const keyboard = [];
           for (let i = 0; i < materials.length; i += 2) {
             const row = [{ text: materials[i].name, callback_data: `rep_mat_${materials[i].id}` }];
-            if (materials[i+1]) row.push({ text: materials[i+1], callback_data: `rep_mat_${materials[i+1].id}` });
+            if (materials[i+1]) row.push({ text: materials[i+1].name, callback_data: `rep_mat_${materials[i+1].id}` });
             keyboard.push(row);
           }
           keyboard.push([{ text: '➡️ Lanjut ke Penyebab', callback_data: 'rep_next_to_cause' }]);
@@ -1152,6 +1152,10 @@ async function initTelegramBot() {
                 reply_markup: { inline_keyboard: keyboard }
               });
             }
+          } catch (e: any) {
+            console.error("Error in rep_add_more_mat:", e);
+            bot.sendMessage(chatId, "❌ *Gagal mengambil data material*");
+          }
         }
 
         if (data === 'rep_next_to_cause') {
@@ -1603,7 +1607,7 @@ async function initTelegramBot() {
 
         let successMsg = `✅ *Tiket Berhasil Di-Assign!*\n\n`;
         successMsg += `Tiket: #${targetTicket.data().ticketNumber}\n`;
-        successMsg += `Customer: ${customerDoc.data().name}\n`;
+        successMsg += `Customer: ${customerDoc.data().name} (${customerDoc.data().customerId})\n`;
         successMsg += `Teknisi: ${techNames.join(', ')}`;
         
         bot.sendMessage(chatId, successMsg, { parse_mode: 'Markdown' });
@@ -1612,7 +1616,7 @@ async function initTelegramBot() {
         for (const uid of techUids) {
           const techDoc = await getDoc(doc(db, 'users', uid));
           if (techDoc.exists() && techDoc.data().telegramId) {
-            const notifyMsg = `🔔 *Tiket Baru Di-Assign!*\n\nAnda telah di-assign ke tiket #${targetTicket.data().ticketNumber} untuk customer *${customerDoc.data().name}*.`;
+            const notifyMsg = `🔔 *Tiket Baru Di-Assign!*\n\nAnda telah di-assign ke tiket #${targetTicket.data().ticketNumber} untuk customer *${customerDoc.data().name}* (${customerDoc.data().customerId}).`;
             bot.sendMessage(techDoc.data().telegramId, notifyMsg, { parse_mode: 'Markdown' });
           }
         }
@@ -1803,14 +1807,20 @@ app.get('/api/proxy-image', async (req, res) => {
   console.log(`[Proxy] Fetching image: ${imageUrl}`);
   
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
     const response = await fetch(imageUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+        'Referer': new URL(imageUrl).origin
       },
-      redirect: 'follow'
+      redirect: 'follow',
+      signal: controller.signal
     });
     
+    clearTimeout(timeout);
     if (!response.ok) {
       console.error(`[Proxy] Failed to fetch image: ${response.status} ${response.statusText} for URL: ${imageUrl}`);
       throw new Error(`Failed to fetch image: ${response.statusText}`);

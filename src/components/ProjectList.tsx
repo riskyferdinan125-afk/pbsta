@@ -46,6 +46,7 @@ import {
   Database
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import JSZip from 'jszip';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { motion, AnimatePresence } from 'motion/react';
@@ -102,14 +103,17 @@ export default function ProjectList({ profile }: ProjectListProps) {
 
   // Helper function to get all evidence for a project
   const getProjectEvidence = (project: Project) => {
-    const legacyPhotos = project.photos?.map(url => ({ 
-      photoUrl: url, 
-      stage: 'Initial' as any, 
-      reportedBy: 'System', 
-      timestamp: project.createdAt,
-      caption: 'Legacy Photo' 
-    })) || [];
-    return [...legacyPhotos, ...(project.evidence || [])];
+    const legacyPhotos = (project.photos || [])
+      .filter(url => !!url)
+      .map(url => ({ 
+        photoUrl: url, 
+        stage: 'Initial' as any, 
+        reportedBy: 'System', 
+        timestamp: project.createdAt,
+        caption: 'Legacy Photo' 
+      }));
+    const evidence = (project.evidence || []).filter(e => !!e && !!e.photoUrl);
+    return [...legacyPhotos, ...evidence];
   };
 
   const allEvidence = activeProjectForGallery ? getProjectEvidence(activeProjectForGallery) : [];
@@ -290,7 +294,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
       const timeout = setTimeout(() => {
         img.src = ""; // Stop loading
         reject(new Error("Image load timeout"));
-      }, 20000); // 20 second timeout
+      }, 60000); // 60 second timeout
 
       img.onload = () => {
         clearTimeout(timeout);
@@ -306,21 +310,122 @@ export default function ProjectList({ profile }: ProjectListProps) {
     });
   };
 
+  const getImageDataWithRetry = async (url: string, retries = 2): Promise<HTMLImageElement | string> => {
+    for (let i = 0; i <= retries; i++) {
+      try {
+        return await getImageData(url);
+      } catch (err) {
+        if (i === retries) throw err;
+        console.warn(`Retrying image load (${i + 1}/${retries}): ${url}`);
+        await new Promise(r => setTimeout(r, 2000)); // Wait 2s before retry
+      }
+    }
+    throw new Error("Failed to load image after retries");
+  };
+
+  const downloadAllEvidenceZip = async (project: Project) => {
+    const zip = new JSZip();
+    const projectEvidence = getProjectEvidence(project);
+    
+    if (projectEvidence.length === 0) {
+      showToast("No evidence to download", "info");
+      return;
+    }
+
+    showToast("Preparing ZIP archive...", "info");
+    
+    try {
+      const getBinaryData = async (url: string) => {
+        if (url.startsWith('data:')) {
+          const response = await fetch(url);
+          const blob = await response.blob();
+          return { buffer: await blob.arrayBuffer(), contentType: blob.type };
+        }
+
+        let finalUrl = url;
+        if (!url.startsWith('http') && !url.includes('/')) {
+          finalUrl = `${window.location.origin}/api/telegram-photo/${url}`;
+        }
+        const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(finalUrl)}`;
+        const response = await fetch(proxyUrl);
+        if (!response.ok) throw new Error(`Failed to fetch ${url} (Status: ${response.status})`);
+        
+        const contentType = response.headers.get('content-type') || 'image/jpeg';
+        const buffer = await response.arrayBuffer();
+        return { buffer, contentType };
+      };
+
+      const results = await Promise.allSettled(
+        projectEvidence.map(async (item, index) => {
+          try {
+            const { buffer, contentType } = await getBinaryData(item.photoUrl);
+            if (buffer.byteLength === 0) throw new Error("Empty buffer");
+            
+            const safeStage = (item.stage || 'Uncategorized').replace(/[/\\?%*:|"<>]/g, '-');
+            const safePid = (project.pid || 'Project').replace(/[/\\?%*:|"<>]/g, '-');
+            
+            let extension = 'jpg';
+            if (contentType.includes('/')) {
+              extension = contentType.split('/')[1].split(';')[0];
+            }
+            if (extension === 'jpeg') extension = 'jpg';
+            
+            const filename = `${safePid}_${safeStage}_${index + 1}.${extension}`;
+            // Use path-based file addition for better reliability
+            zip.file(`${safeStage}/${filename}`, buffer);
+            return true;
+          } catch (err) {
+            console.error(`Error adding image ${index} to ZIP:`, err);
+            throw err;
+          }
+        })
+      );
+
+      const successCount = results.filter(r => r.status === 'fulfilled').length;
+      
+      if (successCount === 0) {
+        showToast("Failed to download any images for the ZIP", "error");
+        return;
+      }
+
+      const content = await zip.generateAsync({ 
+        type: "blob",
+        compression: "DEFLATE",
+        compressionOptions: { level: 6 }
+      });
+      
+      const url = window.URL.createObjectURL(content);
+      const link = document.createElement('a');
+      link.href = url;
+      const safeProjectName = (project.projectName || project.pid || 'Project').replace(/[/\\?%*:|"<>]/g, '-');
+      link.download = `Evidence_${safeProjectName}_${new Date().getTime()}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      showToast(`Successfully downloaded ${successCount} photos in ZIP`, "success");
+    } catch (err) {
+      console.error("Error creating ZIP:", err);
+      showToast("Failed to create ZIP archive", "error");
+    }
+  };
+
   const exportToPDF = async (project: Project) => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 14;
 
-    const telkomAksesLogo = "https://telkomakses.co.id/wp-content/uploads/2022/07/Logo-Telkom-Akses-1.png";
-    const telkomIndonesiaLogo = "https://www.telkom.co.id/data/image_upload/page/1594112895830_compress_logo%20telkom.png";
+    const telkomAksesLogo = "https://images.seeklogo.com/logo-png/34/2/telkom-akses-logo-png_seeklogo-340460.png";
+    const telkomIndonesiaLogo = "https://www.telkom.co.id/minio/show/data/image_upload/page/1594108255409_compress_logo%20telkom%20indonesia.png";
     
     let logoAksesData: any = null;
     let logoTelkomData: any = null;
 
     try {
-      logoAksesData = await getImageData(telkomAksesLogo);
-      logoTelkomData = await getImageData(telkomIndonesiaLogo);
+      logoAksesData = await getImageDataWithRetry(telkomAksesLogo);
+      logoTelkomData = await getImageDataWithRetry(telkomIndonesiaLogo);
     } catch (e) {
       console.error("Failed to load header logos", e);
     }
@@ -328,7 +433,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
     const drawHeader = (pageTitle: string, pageNum: number, totalPages: string) => {
       // Logos
       if (logoAksesData) {
-        doc.addImage(logoAksesData, 'PNG', margin, 7, 30, 10);
+        doc.addImage(logoAksesData, 'PNG', margin, 6, 35, 12);
       } else {
         doc.setFontSize(10);
         doc.setTextColor(150);
@@ -336,7 +441,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
       }
 
       if (logoTelkomData) {
-        doc.addImage(logoTelkomData, 'PNG', pageWidth - margin - 25, 7, 25, 10);
+        doc.addImage(logoTelkomData, 'PNG', pageWidth - margin - 28, 6, 28, 12);
       } else {
         doc.setFontSize(10);
         doc.setTextColor(150);
@@ -469,7 +574,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
 
         for (let i = 0; i < photos.length; i++) {
           try {
-            const img = await getImageData(photos[i].photoUrl);
+            const img = await getImageDataWithRetry(photos[i].photoUrl);
             
             // Check if we need a new page BEFORE adding the image
             if (photoY + imgHeight + 15 > pageHeight - 20) {
@@ -1318,6 +1423,15 @@ export default function ProjectList({ profile }: ProjectListProps) {
                               return (
                                 <>
                                   <button
+                                    onClick={() => downloadAllEvidenceZip(project)}
+                                    className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all shadow-sm border border-indigo-100 shrink-0"
+                                    title="Download All Evidence (ZIP)"
+                                  >
+                                    <Download className="w-3.5 h-3.5" />
+                                    ZIP
+                                  </button>
+                                  <div className="w-px h-6 bg-neutral-200 mx-1 shrink-0" />
+                                  <button
                                     onClick={() => setSelectedStage('Initial')} // Using 'Initial' as a reset or just showing all
                                     className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${selectedStage === 'Initial' ? 'bg-emerald-600 text-white shadow-md' : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'}`}
                                   >
@@ -1571,7 +1685,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
                                   <td colSpan={4} className="px-4 py-2 text-right font-medium text-neutral-500">Job Subtotal</td>
                                   <td className="px-4 py-2 text-right font-bold text-emerald-600">Rp {(project.totalJobCost || 0).toLocaleString()}</td>
                                 </tr>
-                                {project.activityCost && project.activityCost > 0 && (
+                                {(project.activityCost || 0) > 0 && (
                                   <tr className="bg-neutral-50/50">
                                     <td colSpan={4} className="px-4 py-2 text-right font-medium text-neutral-500">Activity Cost</td>
                                     <td className="px-4 py-2 text-right font-bold text-emerald-600">Rp {project.activityCost.toLocaleString()}</td>

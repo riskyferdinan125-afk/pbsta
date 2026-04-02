@@ -139,6 +139,7 @@ export interface Job {
   designator: string;
   name: string;
   unit: string;
+  category?: string;
   materialPrice: number;
   servicePrice: number;
   price: number;

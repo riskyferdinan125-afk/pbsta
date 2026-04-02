@@ -263,17 +263,17 @@ function AppContent() {
           <div className="flex items-center justify-between gap-2">
             {isSidebarOpen ? (
               <img 
-                src="https://i.pinimg.com/736x/b1/b2/14/b1b214df5ebc8e6c1b94075f7fc6d383.jpg" 
+                src="https://images.seeklogo.com/logo-png/34/2/telkom-akses-logo-png_seeklogo-340460.png" 
                 alt="Application Logo" 
-                className="w-full h-auto max-h-32 object-cover rounded-xl shadow-sm border border-black/5 transition-all"
+                className="w-full h-auto max-h-32 object-contain p-2 rounded-xl shadow-sm border border-black/5 transition-all"
                 referrerPolicy="no-referrer"
               />
             ) : (
               !isMobile && (
                 <img 
-                  src="https://i.pinimg.com/736x/b1/b2/14/b1b214df5ebc8e6c1b94075f7fc6d383.jpg" 
+                  src="https://images.seeklogo.com/logo-png/34/2/telkom-akses-logo-png_seeklogo-340460.png" 
                   alt="Application Logo" 
-                  className="h-10 w-10 object-cover rounded-lg border border-black/5"
+                  className="h-10 w-10 object-contain p-1 rounded-lg border border-black/5"
                   referrerPolicy="no-referrer"
                 />
               )
