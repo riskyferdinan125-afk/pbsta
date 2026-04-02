@@ -15,6 +15,14 @@ interface RepairRecordFormProps {
 }
 
 export default function RepairRecordForm({ ticketId, onClose, onSuccess }: RepairRecordFormProps) {
+  const resolvePhotoUrl = (url: string) => {
+    if (!url) return '';
+    if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('/')) return url;
+    if (!url.includes('/')) {
+      return `/api/telegram-photo/${url}`;
+    }
+    return url;
+  };
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -707,7 +715,7 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
                   <div className="relative aspect-video bg-neutral-50 rounded-3xl border-2 border-dashed border-black/5 overflow-hidden group">
                     {formData.evidencePhoto ? (
                       <>
-                        <img src={formData.evidencePhoto} alt="Evidence" className="w-full h-full object-cover" />
+                        <img src={resolvePhotoUrl(formData.evidencePhoto)} alt="Evidence" className="w-full h-full object-cover" />
                         <button 
                           type="button"
                           onClick={() => setFormData(prev => ({ ...prev, evidencePhoto: '' }))}

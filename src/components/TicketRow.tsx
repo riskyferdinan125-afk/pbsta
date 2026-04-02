@@ -62,6 +62,14 @@ export default function TicketRow({
   getSLAStatus,
   tickets
 }: TicketRowProps) {
+  const resolvePhotoUrl = (url: string) => {
+    if (!url) return '';
+    if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('/')) return url;
+    if (!url.includes('/')) {
+      return `/api/telegram-photo/${url}`;
+    }
+    return url;
+  };
   return (
     <tr 
       key={ticket.id} 
@@ -172,7 +180,7 @@ export default function TicketRow({
                   <div key={techId} className="relative inline-block">
                     <div className="w-8 h-8 rounded-full ring-2 ring-white bg-neutral-100 flex items-center justify-center text-neutral-400 border border-black/5 overflow-hidden">
                       {tech?.photoURL ? (
-                        <img src={tech.photoURL} alt="Tech" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        <img src={resolvePhotoUrl(tech.photoURL)} alt="Tech" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       ) : (
                         <User className="w-4 h-4" />
                       )}

@@ -14,6 +14,14 @@ interface TechnicianListProps {
 }
 
 export default function TechnicianList({ profile }: TechnicianListProps) {
+  const resolvePhotoUrl = (url: string) => {
+    if (!url) return '';
+    if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('/')) return url;
+    if (!url.includes('/')) {
+      return `/api/telegram-photo/${url}`;
+    }
+    return url;
+  };
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [loading, setLoading] = useState(true);
   const { showToast } = useToast();
@@ -349,7 +357,7 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
                 >
                   {tech.photoURL ? (
                     <img 
-                      src={tech.photoURL} 
+                      src={resolvePhotoUrl(tech.photoURL)} 
                       alt={tech.name} 
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
@@ -533,7 +541,7 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
                     <div className="w-24 h-24 bg-neutral-100 rounded-2xl border-2 border-dashed border-black/10 flex items-center justify-center overflow-hidden transition-all group-hover:border-emerald-500/50">
                       {formData.photoURL ? (
                         <img 
-                          src={formData.photoURL} 
+                          src={resolvePhotoUrl(formData.photoURL)} 
                           alt="Preview" 
                           className="w-full h-full object-cover"
                           referrerPolicy="no-referrer"

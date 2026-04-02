@@ -35,6 +35,14 @@ interface TicketDetailsModalProps {
 
 export default function TicketDetailsModal({ ticket, onClose, technicians, allTickets = [], profile }: TicketDetailsModalProps) {
   const { showToast } = useToast();
+  const resolvePhotoUrl = (url: string) => {
+    if (!url) return '';
+    if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('/')) return url;
+    if (!url.includes('/')) {
+      return `/api/telegram-photo/${url}`;
+    }
+    return url;
+  };
   const [history, setHistory] = useState<TicketHistory[]>([]);
   const [notes, setNotes] = useState<TicketNote[]>([]);
   const [repairRecords, setRepairRecords] = useState<RepairRecord[]>([]);
@@ -1132,7 +1140,7 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                                   <div className="relative">
                                     <div className="w-6 h-6 bg-neutral-100 rounded-full flex items-center justify-center text-neutral-400 border border-black/5">
                                       {tech.photoURL ? (
-                                        <img src={tech.photoURL} alt={tech.name} className="w-full h-full object-cover rounded-full" referrerPolicy="no-referrer" />
+                                        <img src={resolvePhotoUrl(tech.photoURL)} alt={tech.name} className="w-full h-full object-cover rounded-full" referrerPolicy="no-referrer" />
                                       ) : (
                                         <User className="w-3 h-3" />
                                       )}
@@ -1218,7 +1226,7 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                                     <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-white px-2 py-1 rounded-lg shadow-lg border border-black/5 text-[10px] font-bold whitespace-nowrap flex items-center gap-2">
                                       <div className="w-4 h-4 rounded-full overflow-hidden border border-black/5">
                                         <img 
-                                          src={tech.photoURL || `https://ui-avatars.com/api/?name=${tech.name}`} 
+                                          src={resolvePhotoUrl(tech.photoURL || `https://ui-avatars.com/api/?name=${tech.name}`)} 
                                           alt={tech.name} 
                                           className="w-full h-full object-cover"
                                           referrerPolicy="no-referrer"
@@ -1243,7 +1251,7 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                             <div key={tech.id} className="flex items-center gap-3 p-3 bg-neutral-50 rounded-xl border border-black/5">
                               <div className="w-10 h-10 rounded-lg overflow-hidden border border-black/5">
                                 <img 
-                                  src={tech.photoURL || `https://ui-avatars.com/api/?name=${tech.name}`} 
+                                  src={resolvePhotoUrl(tech.photoURL || `https://ui-avatars.com/api/?name=${tech.name}`)} 
                                   alt={tech.name} 
                                   className="w-full h-full object-cover"
                                   referrerPolicy="no-referrer"
@@ -1324,7 +1332,7 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                       <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">Before Work</p>
                       {ticket.beforePhoto ? (
                         <div className="relative group aspect-video rounded-xl overflow-hidden border border-black/5 bg-neutral-100">
-                          <img src={ticket.beforePhoto} alt="Before" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          <img src={resolvePhotoUrl(ticket.beforePhoto)} alt="Before" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                           <button 
                             onClick={() => handleUploadPhoto('before')}
                             className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center text-white text-xs font-bold"
@@ -1346,7 +1354,7 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                       <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">After Work</p>
                       {ticket.afterPhoto ? (
                         <div className="relative group aspect-video rounded-xl overflow-hidden border border-black/5 bg-neutral-100">
-                          <img src={ticket.afterPhoto} alt="After" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          <img src={resolvePhotoUrl(ticket.afterPhoto)} alt="After" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                           <button 
                             onClick={() => handleUploadPhoto('after')}
                             className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center text-white text-xs font-bold"

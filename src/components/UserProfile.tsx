@@ -12,6 +12,14 @@ interface Props {
 }
 
 export default function UserProfile({ profile, onNavigate }: Props) {
+  const resolvePhotoUrl = (url: string | null | undefined) => {
+    if (!url) return '';
+    if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('/')) return url;
+    if (!url.includes('/')) {
+      return `/api/telegram-photo/${url}`;
+    }
+    return url;
+  };
   const [telegramId, setTelegramId] = useState(profile?.telegramId || '');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -104,7 +112,7 @@ export default function UserProfile({ profile, onNavigate }: Props) {
         <div className="px-8 pb-8">
           <div className="relative -mt-12 mb-6">
             <img 
-              src={profile.photoURL || `https://ui-avatars.com/api/?name=${profile.name}`} 
+              src={resolvePhotoUrl(profile.photoURL || `https://ui-avatars.com/api/?name=${profile.name}`)} 
               alt={profile.name}
               className="w-24 h-24 rounded-2xl border-4 border-white shadow-lg bg-white"
             />

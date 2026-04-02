@@ -71,6 +71,14 @@ export default function App() {
 }
 
 function AppContent() {
+  const resolvePhotoUrl = (url: string | null | undefined) => {
+    if (!url) return '';
+    if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('/')) return url;
+    if (!url.includes('/')) {
+      return `/api/telegram-photo/${url}`;
+    }
+    return url;
+  };
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -339,7 +347,7 @@ function AppContent() {
             className="w-full flex items-center gap-3 px-2 py-2 mb-4 hover:bg-neutral-50 rounded-xl transition-all text-left"
           >
             <img 
-              src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`} 
+              src={resolvePhotoUrl(user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`)} 
               alt="Profile" 
               className="w-10 h-10 rounded-full border border-black/5"
               referrerPolicy="no-referrer"

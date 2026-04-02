@@ -1,0 +1,29 @@
+src/components/UserProfile.tsx:            <img 
+src/components/ProjectReport.tsx:          <img 
+src/components/ProjectReport.tsx:          <img 
+src/components/ProjectReport.tsx:                        <img src={resolvePhotoUrl(item.photoUrl)} alt={section.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+src/components/TechnicianDetailsModal.tsx:                      <img 
+src/components/RepairRecordForm.tsx:                        <img src={resolvePhotoUrl(formData.evidencePhoto)} alt="Evidence" className="w-full h-full object-cover" />
+src/components/TicketProgress.tsx:                                <img src={tech.photoURL} alt="Tech" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+src/components/TicketRow.tsx:                        <img src={resolvePhotoUrl(tech.photoURL)} alt="Tech" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+src/components/TicketAssignment.tsx:                              <img src={tech.photoURL} alt={tech.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+src/components/TelegramSettings.tsx:                        <img 
+src/components/ProjectList.tsx:                                                <img 
+src/components/ProjectList.tsx:                                                  <img 
+src/components/ProjectList.tsx:                            <img src={resolvePhotoUrl(item.photoUrl)} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+src/components/ProjectList.tsx:              <img 
+src/components/CustomerPortal.tsx:                            <img src={selectedTicket.beforePhoto} alt="Before" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+src/components/CustomerPortal.tsx:                            <img src={selectedTicket.afterPhoto} alt="After" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+src/components/CustomerPortal.tsx:                          <img 
+src/components/AssignmentModal.tsx:                            <img src={tech.photoURL} alt={tech.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+src/components/UserManagement.tsx:                          <img src={resolvePhotoUrl(u.photoURL)} alt={u.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+src/components/UserManagement.tsx:                      <img src={resolvePhotoUrl(editingUser.photoURL)} alt={editingUser.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+src/components/UserManagement.tsx:                      <img src={resolvePhotoUrl(viewingUser.photoURL)} alt={viewingUser.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+src/components/TechnicianList.tsx:                    <img 
+src/components/TechnicianList.tsx:                        <img 
+src/components/TicketDetailsModal.tsx:                                        <img src={resolvePhotoUrl(tech.photoURL)} alt={tech.name} className="w-full h-full object-cover rounded-full" referrerPolicy="no-referrer" />
+src/components/TicketDetailsModal.tsx:                                        <img 
+src/components/TicketDetailsModal.tsx:                                <img 
+src/components/TicketDetailsModal.tsx:                          <img src={resolvePhotoUrl(ticket.beforePhoto)} alt="Before" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+src/components/TicketDetailsModal.tsx:                          <img src={resolvePhotoUrl(ticket.afterPhoto)} alt="After" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+src/components/TicketList.tsx:                              <img src={resolvePhotoUrl(tech.photoURL)} alt={tech.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />

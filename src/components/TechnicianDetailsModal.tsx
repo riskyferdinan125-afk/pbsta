@@ -24,6 +24,15 @@ interface TechnicianDetailsModalProps {
 export default function TechnicianDetailsModal({ isOpen, onClose, technician }: TechnicianDetailsModalProps) {
   if (!technician) return null;
 
+  const resolvePhotoUrl = (url: string) => {
+    if (!url) return '';
+    if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('/')) return url;
+    if (!url.includes('/')) {
+      return `/api/telegram-photo/${url}`;
+    }
+    return url;
+  };
+
   const getStatusColor = (status?: AvailabilityStatus) => {
     switch (status) {
       case 'Available': return 'bg-emerald-500';
@@ -71,7 +80,7 @@ export default function TechnicianDetailsModal({ isOpen, onClose, technician }: 
                   <div className="w-full h-full rounded-2xl bg-neutral-100 flex items-center justify-center overflow-hidden border border-black/5">
                     {technician.photoURL ? (
                       <img 
-                        src={technician.photoURL} 
+                        src={resolvePhotoUrl(technician.photoURL)} 
                         alt={technician.name} 
                         className="w-full h-full object-cover"
                         referrerPolicy="no-referrer"

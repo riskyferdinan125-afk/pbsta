@@ -61,6 +61,14 @@ interface TicketListProps {
 }
 
 export default function TicketList({ initialCustomerId, onClearInitialCustomer, profile }: TicketListProps) {
+  const resolvePhotoUrl = (url: string) => {
+    if (!url) return '';
+    if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('/')) return url;
+    if (!url.includes('/')) {
+      return `/api/telegram-photo/${url}`;
+    }
+    return url;
+  };
   const [tickets, setTickets] = useState<(Ticket & { customerName?: string })[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
@@ -1013,7 +1021,7 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
                         <div className="relative">
                           <div className="w-12 h-12 bg-neutral-100 rounded-full flex items-center justify-center text-neutral-400 border border-black/5 overflow-hidden">
                             {tech.photoURL ? (
-                              <img src={tech.photoURL} alt={tech.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              <img src={resolvePhotoUrl(tech.photoURL)} alt={tech.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                             ) : (
                               <User className="w-6 h-6" />
                             )}

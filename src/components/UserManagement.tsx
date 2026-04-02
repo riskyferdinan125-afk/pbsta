@@ -15,6 +15,14 @@ interface UserManagementProps {
 }
 
 export default function UserManagement({ profile }: UserManagementProps) {
+  const resolvePhotoUrl = (url: string | null | undefined) => {
+    if (!url) return '';
+    if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('/')) return url;
+    if (!url.includes('/')) {
+      return `/api/telegram-photo/${url}`;
+    }
+    return url;
+  };
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const { showToast } = useToast();
@@ -334,7 +342,7 @@ export default function UserManagement({ profile }: UserManagementProps) {
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-neutral-100 border border-black/5 overflow-hidden shrink-0">
                         {u.photoURL ? (
-                          <img src={u.photoURL} alt={u.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          <img src={resolvePhotoUrl(u.photoURL)} alt={u.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         ) : (
                           <UserCircle className="w-full h-full p-2 text-neutral-400" />
                         )}
@@ -422,7 +430,7 @@ export default function UserManagement({ profile }: UserManagementProps) {
                 <div className="flex items-center gap-4 p-4 bg-neutral-50 rounded-2xl border border-black/5">
                   <div className="w-12 h-12 rounded-full bg-white border border-black/5 overflow-hidden shrink-0">
                     {editingUser.photoURL ? (
-                      <img src={editingUser.photoURL} alt={editingUser.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <img src={resolvePhotoUrl(editingUser.photoURL)} alt={editingUser.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     ) : (
                       <UserCircle className="w-full h-full p-2 text-neutral-400" />
                     )}
@@ -658,7 +666,7 @@ export default function UserManagement({ profile }: UserManagementProps) {
                 <div className="flex flex-col items-center text-center space-y-4">
                   <div className="w-24 h-24 rounded-full bg-neutral-100 border-4 border-emerald-50 overflow-hidden shadow-inner">
                     {viewingUser.photoURL ? (
-                      <img src={viewingUser.photoURL} alt={viewingUser.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <img src={resolvePhotoUrl(viewingUser.photoURL)} alt={viewingUser.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     ) : (
                       <UserCircle className="w-full h-full p-4 text-neutral-400" />
                     )}
