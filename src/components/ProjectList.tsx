@@ -101,6 +101,16 @@ export default function ProjectList({ profile }: ProjectListProps) {
   const MATERIALS_PER_PAGE = 5;
   const PROJECTS_PER_PAGE = 10;
 
+  const resolvePhotoUrl = (url: string) => {
+    if (!url) return '';
+    if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('/')) return url;
+    // If it's a file ID (no slashes, no http), it's likely a Telegram file ID
+    if (!url.includes('/')) {
+      return `/api/telegram-photo/${url}`;
+    }
+    return url;
+  };
+
   // Helper function to get all evidence for a project
   const getProjectEvidence = (project: Project) => {
     const legacyPhotos = (project.photos || [])
@@ -457,7 +467,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
         ["PROYEK", ": " + (project.projectName || project.description)],
         ["NO. KONTRAK", ": " + (project.contractNo || "-")],
         ["NO. SURAT PESANAN", ": " + (project.orderNo || "-")],
-        ["WITEL", ": " + (project.witel || "-")],
+        ["WITEL", ": " + (project.witel || "MADIUN")],
         ["TIKET / LOKASI", ": " + (project.ticketId ? `${project.ticketId} - ${project.location}` : project.location || "-")],
         ["PELAKSANA", ": " + (project.partner || "-")]
       ];
@@ -502,7 +512,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
         { title: 'SESUDAH', stages: ['Penaikan UC', 'Sesudah'] },
         { title: 'HASIL UKUR', stages: ['Hasil ukur'] },
         { title: 'BERITA ACARA', stages: ['Berita acara'] },
-        { title: 'AS BUILT DRAWING SMALL WORLD', stages: ['As built drawing'] }
+        { title: 'AS BUILT DRAWING', stages: ['As built drawing'] }
       ];
 
       const activeSections = sections.filter(s => {
@@ -594,7 +604,8 @@ export default function ProjectList({ profile }: ProjectListProps) {
             
             doc.setFont("helvetica", "normal");
             doc.setFontSize(7);
-            const ts = photos[i].timestamp ? photos[i].timestamp.toDate().toLocaleString('id-ID') : "-";
+            const date = photos[i].timestamp ? photos[i].timestamp.toDate() : null;
+            const ts = date ? date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) + ' ' + date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : "-";
             doc.text(ts, photoX + imgWidth, photoY + imgHeight + 5, { align: "right" });
             
             if (photos[i].caption) {
@@ -602,9 +613,15 @@ export default function ProjectList({ profile }: ProjectListProps) {
               doc.text(photos[i].caption || "", photoX, photoY + imgHeight + 9, { maxWidth: imgWidth });
             }
 
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(6);
+            doc.setTextColor(150);
+            doc.text(`Reported by: ${photos[i].reportedBy || "-"}`, photoX, photoY + imgHeight + 13);
+            doc.setTextColor(0);
+
             if ((i + 1) % 2 === 0) {
               photoX = margin;
-              photoY += imgHeight + 25; // Increased spacing
+              photoY += imgHeight + 30; // Increased spacing
             } else {
               photoX += imgWidth + margin;
             }
@@ -1532,7 +1549,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
                                               >
                                                 <div className="absolute inset-0 bg-neutral-200 animate-pulse rounded-2xl" />
                                                 <img 
-                                                  src={item.photoUrl} 
+                                                  src={resolvePhotoUrl(item.photoUrl)} 
                                                   alt={item.stage} 
                                                   className="absolute inset-0 w-full h-full object-cover rounded-2xl border border-black/5 shadow-sm transition-all duration-500 group-hover:shadow-md"
                                                   referrerPolicy="no-referrer"
@@ -1575,7 +1592,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
                                                 >
                                                   <div className="absolute inset-0 bg-neutral-200 animate-pulse rounded-2xl" />
                                                   <img 
-                                                    src={item.photoUrl} 
+                                                    src={resolvePhotoUrl(item.photoUrl)} 
                                                     alt={item.stage} 
                                                     className="absolute inset-0 w-full h-full object-cover rounded-2xl border border-black/5 shadow-sm transition-all duration-500 group-hover:shadow-md"
                                                     referrerPolicy="no-referrer"
@@ -2070,7 +2087,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
                       {evidence.map((item, idx) => (
                         <div key={idx} className="bg-white rounded-xl overflow-hidden border border-black/5 relative group shadow-sm flex flex-col">
                           <div className="aspect-video relative">
-                            <img src={item.photoUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            <img src={resolvePhotoUrl(item.photoUrl)} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                             <div className="absolute top-1 left-1">
                               <span className="px-1.5 py-0.5 bg-black/60 text-white text-[8px] font-bold rounded uppercase">
                                 {item.stage}
@@ -2342,7 +2359,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
               onClick={(e) => e.stopPropagation()}
             >
               <img 
-                src={allEvidence[selectedPhotoIndex].photoUrl} 
+                src={resolvePhotoUrl(allEvidence[selectedPhotoIndex].photoUrl)} 
                 alt="Evidence Full View" 
                 className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-2xl border border-white/10"
                 referrerPolicy="no-referrer"
@@ -2378,7 +2395,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
                 )}
                 <div className="flex justify-center">
                   <a 
-                    href={allEvidence[selectedPhotoIndex].photoUrl} 
+                    href={resolvePhotoUrl(allEvidence[selectedPhotoIndex].photoUrl)} 
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="px-6 py-2 bg-white text-black rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-neutral-200 transition-colors"

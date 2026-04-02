@@ -21,6 +21,15 @@ export default function ProjectReport({ project, onClose }: ProjectReportProps) 
     });
   };
 
+  const resolvePhotoUrl = (url: string) => {
+    if (!url) return '';
+    if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('/')) return url;
+    if (!url.includes('/')) {
+      return `/api/telegram-photo/${url}`;
+    }
+    return url;
+  };
+
   const handlePrint = () => {
     window.print();
   };
@@ -64,20 +73,19 @@ export default function ProjectReport({ project, onClose }: ProjectReportProps) 
       {/* Report Content */}
       <div className="max-w-[210mm] mx-auto p-[10mm] sm:p-[20mm] bg-white shadow-lg my-8 print:my-0 print:shadow-none print:max-w-none">
         {/* PDF Header Section */}
-        <div className="flex justify-between items-start mb-8">
-          <div className="flex items-center gap-2">
-            <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center text-white font-bold text-xl">TA</div>
-            <div>
-              <h1 className="text-xl font-bold text-neutral-900 leading-tight">TelkomAkses</h1>
-              <p className="text-[10px] text-neutral-500 uppercase">Telkom Indonesia</p>
-            </div>
-          </div>
-          <div className="text-right">
-            <h1 className="text-xl font-bold text-neutral-900 leading-tight">Telkom Indonesia</h1>
-            <div className="flex justify-end mt-1">
-               <div className="w-8 h-8 bg-red-600 rounded-full"></div>
-            </div>
-          </div>
+        <div className="flex justify-between items-center mb-8 border-b-2 border-neutral-800 pb-4">
+          <img 
+            src="https://images.seeklogo.com/logo-png/34/2/telkom-akses-logo-png_seeklogo-340460.png" 
+            alt="Telkom Akses" 
+            className="h-12 object-contain"
+            referrerPolicy="no-referrer"
+          />
+          <img 
+            src="https://www.telkom.co.id/minio/show/data/image_upload/page/1594108255409_compress_logo%20telkom%20indonesia.png" 
+            alt="Telkom Indonesia" 
+            className="h-12 object-contain"
+            referrerPolicy="no-referrer"
+          />
         </div>
 
         {/* Project Details & BOQ Section (Page 1) */}
@@ -96,10 +104,10 @@ export default function ProjectReport({ project, onClose }: ProjectReportProps) 
             <div>: {project.witel || 'MADIUN'}</div>
             
             <div className="font-bold uppercase">TIKET / LOKASI</div>
-            <div>: {project.ticketId} - {project.location}</div>
+            <div>: {project.ticketId ? `${project.ticketId} - ${project.location}` : project.location || "-"}</div>
             
             <div className="font-bold uppercase">PELAKSANA</div>
-            <div>: {project.partner || 'PT TELKOM AKSES'}</div>
+            <div>: {project.partner || "-"}</div>
 
             {project.inseraTicketIds && project.inseraTicketIds.length > 0 && (
               <>
@@ -182,7 +190,7 @@ export default function ProjectReport({ project, onClose }: ProjectReportProps) 
                   {sectionPhotos.map((item, idx) => (
                     <div key={idx} className="space-y-2 border border-black/10 p-2 rounded bg-neutral-50/30">
                       <div className="aspect-[4/3] border border-black overflow-hidden bg-white">
-                        <img src={item.photoUrl} alt={section.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        <img src={resolvePhotoUrl(item.photoUrl)} alt={section.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       </div>
                       <div className="space-y-1">
                         <div className="flex justify-between items-center">
