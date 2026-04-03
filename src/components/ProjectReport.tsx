@@ -49,6 +49,36 @@ export default function ProjectReport({ project, onClose }: ProjectReportProps) 
     return evidence;
   };
 
+  const getAllEvidence = () => {
+    const evidence = project.evidence || [];
+    const legacyPhotos = project.photos?.map(url => ({
+      photoUrl: url,
+      stage: 'Initial' as any,
+      reportedBy: 'System',
+      timestamp: project.createdAt,
+      caption: 'Legacy Photo'
+    })) || [];
+    return [...legacyPhotos, ...evidence];
+  };
+
+  const sections = [
+    { title: 'TIKET INSERA', stages: ['Tiket Insera'] },
+    { title: 'SEBELUM', stages: ['Initial', 'Sebelum'] },
+    { title: 'PROGRESS', stages: ['Penggalian', 'Tanam tiang', 'Pengecoran', 'Penarikan kabel', 'Pemasangan aksesoris', 'Penyambungan core', 'Pemasangan UC'] },
+    { title: 'SESUDAH', stages: ['Penaikan UC', 'Sesudah'] },
+    { title: 'HASIL UKUR', stages: ['Hasil ukur'] },
+    { title: 'BERITA ACARA', stages: ['Berita acara'] },
+    { title: 'AS BUILT DRAWING', stages: ['As built drawing'] }
+  ];
+
+  const predefinedStages = sections.flatMap(s => s.stages);
+  const otherEvidence = getAllEvidence().filter(e => !predefinedStages.includes(e.stage));
+  
+  const allSections = [
+    ...sections,
+    ...(otherEvidence.length > 0 ? [{ title: 'LAIN-LAIN', stages: [], customEvidence: otherEvidence }] : [])
+  ];
+
   return (
     <div className="fixed inset-0 z-[60] bg-white overflow-y-auto print:p-0">
       {/* Header - Hidden in Print */}
@@ -163,16 +193,11 @@ export default function ProjectReport({ project, onClose }: ProjectReportProps) 
 
         {/* Evidence Sections - Organized by requested sequence */}
         <div className="space-y-12">
-          {[
-            { title: 'TIKET INSERA', stages: ['Tiket Insera'] },
-            { title: 'SEBELUM', stages: ['Initial', 'Sebelum'] },
-            { title: 'PROGRESS', stages: ['Penggalian', 'Tanam tiang', 'Pengecoran', 'Penarikan kabel', 'Pemasangan aksesoris', 'Penyambungan core', 'Pemasangan UC'] },
-            { title: 'SESUDAH', stages: ['Penaikan UC', 'Sesudah'] },
-            { title: 'HASIL UKUR', stages: ['Hasil ukur'] },
-            { title: 'BERITA ACARA', stages: ['Berita acara'] },
-            { title: 'AS BUILT DRAWING', stages: ['As built drawing'] }
-          ].map((section) => {
-            const sectionPhotos = section.stages.flatMap(stage => getEvidenceByStage(stage as any));
+          {allSections.map((section) => {
+            const sectionPhotos = 'customEvidence' in section 
+              ? (section as any).customEvidence 
+              : section.stages.flatMap(stage => getEvidenceByStage(stage as any));
+            
             if (sectionPhotos.length === 0) return null;
 
             return (

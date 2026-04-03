@@ -210,11 +210,18 @@ export default function ProjectList({ profile }: ProjectListProps) {
       { title: 'AS BUILT DRAWING SMALL WORLD', stages: ['As built drawing'] }
     ];
 
-    const evidenceData: any[][] = [];
-    const projectEvidence = getProjectEvidence(project);
+    const predefinedStages = sections.flatMap(s => s.stages);
+    const otherEvidence = projectEvidence.filter(e => !predefinedStages.includes(e.stage));
+    
+    const allSections = [
+      ...sections,
+      ...(otherEvidence.length > 0 ? [{ title: 'LAIN-LAIN', stages: [], customEvidence: otherEvidence }] : [])
+    ];
 
-    sections.forEach(section => {
-      const sectionPhotos = projectEvidence.filter(e => section.stages.includes(e.stage));
+    const evidenceData: any[][] = [];
+
+    allSections.forEach(section => {
+      const sectionPhotos = 'customEvidence' in section ? (section as any).customEvidence : projectEvidence.filter(e => section.stages.includes(e.stage));
       const hasInseraIds = section.title === 'TIKET INSERA' && project.inseraTicketIds && project.inseraTicketIds.length > 0;
       
       if (sectionPhotos.length > 0 || hasInseraIds) {
@@ -515,8 +522,16 @@ export default function ProjectList({ profile }: ProjectListProps) {
         { title: 'AS BUILT DRAWING', stages: ['As built drawing'] }
       ];
 
-      const activeSections = sections.filter(s => {
-        const photos = projectEvidence.filter(e => s.stages.includes(e.stage));
+      const predefinedStages = sections.flatMap(s => s.stages);
+      const otherEvidence = projectEvidence.filter(e => !predefinedStages.includes(e.stage));
+      
+      const allSections = [
+        ...sections,
+        ...(otherEvidence.length > 0 ? [{ title: 'LAIN-LAIN', stages: [], customEvidence: otherEvidence }] : [])
+      ];
+
+      const activeSections = allSections.filter(s => {
+        const photos = 'customEvidence' in s ? (s as any).customEvidence : projectEvidence.filter(e => s.stages.includes(e.stage));
         const hasInseraIds = s.title === 'TIKET INSERA' && project.inseraTicketIds && project.inseraTicketIds.length > 0;
         return photos.length > 0 || hasInseraIds;
       });
@@ -559,7 +574,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
 
       // Photo Pages
       for (const section of activeSections) {
-        const photos = projectEvidence.filter(e => section.stages.includes(e.stage));
+        const photos = 'customEvidence' in section ? (section as any).customEvidence : projectEvidence.filter(e => section.stages.includes(e.stage));
         const hasInseraIds = section.title === 'TIKET INSERA' && project.inseraTicketIds && project.inseraTicketIds.length > 0;
         
         doc.addPage();
