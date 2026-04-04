@@ -77,6 +77,8 @@ const addProjectSessions = new Map<number, {
   evidenPra?: string[],
   proses?: string[],
   evidenPasca?: string[],
+  evidenPascaPhotos?: { category: string, photoUrl: string }[],
+  currentEvidenPascaCategory?: string,
   hasilUkurUrl?: string,
   materialTibaUrl?: string,
   abdUrl?: string,
@@ -150,6 +152,22 @@ function createMultiSelectKeyboard(prefix: string, selectedOptions: string[] = [
     keyboard.push(row);
   }
   keyboard.push([{ text: '➡️ SELESAI', callback_data: `${prefix}_done` }]);
+  return { inline_keyboard: keyboard };
+}
+
+function createCategoryKeyboard(prefix: string) {
+  const keyboard = [];
+  for (let i = 0; i < EVIDEN_OPTIONS.length; i += 2) {
+    const opt1 = EVIDEN_OPTIONS[i];
+    const opt2 = EVIDEN_OPTIONS[i + 1];
+    const row = [
+      { text: opt1, callback_data: `${prefix}_cat_${opt1}` }
+    ];
+    if (opt2) {
+      row.push({ text: opt2, callback_data: `${prefix}_cat_${opt2}` });
+    }
+    keyboard.push(row);
+  }
   return { inline_keyboard: keyboard };
 }
 
@@ -977,22 +995,60 @@ async function initTelegramBot() {
               reply_markup: createMultiSelectKeyboard('ap_pro')
             });
           } else if (prefix === 'ap_pro') {
-            session.stage = 'waiting_eviden_pasca';
-            bot?.editMessageText(`🏗️ *Tambah Proyek* 🏗️\n\nSilakan pilih opsi untuk *EVIDEN PASCA*:`, {
+            session.stage = 'waiting_eviden_pasca_category';
+            bot?.editMessageText(`🏗️ *Tambah Proyek* 🏗️\n\nSilakan pilih kategori untuk *EVIDEN PASCA*:`, {
               chat_id: chatId,
               message_id: query.message?.message_id,
               parse_mode: 'Markdown',
-              reply_markup: createMultiSelectKeyboard('ap_pas')
-            });
-          } else if (prefix === 'ap_pas') {
-            session.stage = 'waiting_hasil_ukur';
-            bot?.editMessageText(`🏗️ *Tambah Proyek* 🏗️\n\nSilakan kirim *FOTO HASIL UKUR*:`, {
-              chat_id: chatId,
-              message_id: query.message?.message_id,
-              parse_mode: 'Markdown'
+              reply_markup: createCategoryKeyboard('ap_pas')
             });
           }
           addProjectSessions.set(chatId, session);
+          bot?.answerCallbackQuery(query.id);
+        }
+
+        // EVIDEN PASCA Category Selection
+        if (data.startsWith('ap_pas_cat_')) {
+          const category = data.replace('ap_pas_cat_', '');
+          const session = addProjectSessions.get(chatId);
+          if (!session) return;
+
+          session.currentEvidenPascaCategory = category;
+          session.stage = 'waiting_eviden_pasca_photo';
+          addProjectSessions.set(chatId, session);
+
+          bot?.editMessageText(`🏗️ *EVIDEN PASCA: ${category}*\n\nSilakan kirim *FOTO EVIDEN* untuk kategori ini:`, {
+            chat_id: chatId,
+            message_id: query.message?.message_id,
+            parse_mode: 'Markdown'
+          });
+          bot?.answerCallbackQuery(query.id);
+        }
+
+        if (data === 'ap_pas_more') {
+          const session = addProjectSessions.get(chatId);
+          if (!session) return;
+
+          session.stage = 'waiting_eviden_pasca_category';
+          addProjectSessions.set(chatId, session);
+
+          bot?.sendMessage(chatId, `🏗️ *Tambah Proyek* 🏗️\n\nSilakan pilih kategori lain untuk *EVIDEN PASCA*:`, {
+            parse_mode: 'Markdown',
+            reply_markup: createCategoryKeyboard('ap_pas')
+          });
+          bot?.answerCallbackQuery(query.id);
+        }
+
+        if (data === 'ap_pas_next') {
+          const session = addProjectSessions.get(chatId);
+          if (!session) return;
+
+          session.stage = 'waiting_hasil_ukur';
+          addProjectSessions.set(chatId, session);
+
+          bot?.sendMessage(chatId, `🏗️ *Tambah Proyek* 🏗️\n\nSilakan kirim *FOTO HASIL UKUR*:`, {
+            parse_mode: 'Markdown'
+          });
           bot?.answerCallbackQuery(query.id);
         }
 
@@ -1300,6 +1356,25 @@ async function initTelegramBot() {
       // Check for add project session
       const apSession = addProjectSessions.get(chatId);
       if (apSession) {
+        if (apSession.stage === 'waiting_eviden_pasca_photo') {
+          const category = apSession.currentEvidenPascaCategory || 'Uncategorized';
+          const photos = apSession.evidenPascaPhotos || [];
+          photos.push({ category, photoUrl });
+          addProjectSessions.set(chatId, { ...apSession, evidenPascaPhotos: photos });
+          
+          bot?.sendMessage(chatId, `📸 *Foto EVIDEN PASCA (${category}) Tersimpan.*\n\nSilakan kirim foto lagi untuk kategori ini, atau pilih opsi di bawah:`, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: '➕ PILIH LAGI (Kategori Lain)', callback_data: 'ap_pas_more' },
+                  { text: '➡️ BERIKUTNYA', callback_data: 'ap_pas_next' }
+                ]
+              ]
+            }
+          });
+          return;
+        }
         if (apSession.stage === 'waiting_hasil_ukur') {
           addProjectSessions.set(chatId, { ...apSession, hasilUkurUrl: photoUrl, stage: 'waiting_material_tiba' });
           bot?.sendMessage(chatId, "📸 *HASIL UKUR Tersimpan.*\n\nSilakan kirim *FOTO MATERIAL TIBA*:", { parse_mode: 'Markdown' });
@@ -1850,6 +1925,10 @@ async function initTelegramBot() {
           const pid = `PRJ-${Date.now().toString().slice(-6)}`;
           const projectName = `Proyek ${apSession.tiketGamas || apSession.boqRekon || pid}`;
           
+          const evidenPascaOptions = apSession.evidenPascaPhotos 
+            ? Array.from(new Set(apSession.evidenPascaPhotos.map(p => p.category)))
+            : (apSession.evidenPasca || []);
+
           const projectData = {
             pid,
             projectName,
@@ -1859,7 +1938,7 @@ async function initTelegramBot() {
             baPendukungUrl: fileUrl,
             evidenPraOptions: apSession.evidenPra || [],
             prosesOptions: apSession.proses || [],
-            evidenPascaOptions: apSession.evidenPasca || [],
+            evidenPascaOptions,
             status: 'open',
             evidence: [] as any[],
             createdAt: serverTimestamp(),
@@ -1883,7 +1962,17 @@ async function initTelegramBot() {
               reportedBy: userDoc.data().name || 'Technician'
             });
           }
-          if (apSession.evidenPasca && apSession.evidenPasca.length > 0) {
+          if (apSession.evidenPascaPhotos && apSession.evidenPascaPhotos.length > 0) {
+            apSession.evidenPascaPhotos.forEach(p => {
+              projectData.evidence.push({
+                stage: 'EVIDEN PASCA',
+                photoUrl: p.photoUrl,
+                caption: `Kategori: ${p.category}`,
+                timestamp: Timestamp.now(),
+                reportedBy: userDoc.data().name || 'Technician'
+              });
+            });
+          } else if (apSession.evidenPasca && apSession.evidenPasca.length > 0) {
             projectData.evidence.push({
               stage: 'EVIDEN PASCA',
               caption: `Selected: ${apSession.evidenPasca.join(', ')}`,
