@@ -274,6 +274,7 @@
       "description": "System-wide settings for Telegram bot",
       "type": "object",
       "properties": {
+        "botToken": { "type": "string", "description": "Telegram Bot API Token" },
         "allowedStatuses": { "type": "array", "items": { "type": "string" }, "description": "List of valid ticket statuses" },
         "allowedPriorities": { "type": "array", "items": { "type": "string" }, "description": "List of valid ticket priorities" },
         "welcomeMessage": { "type": "string", "description": "Default welcome message" },

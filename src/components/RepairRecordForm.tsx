@@ -558,9 +558,18 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-sm font-semibold text-neutral-700 flex items-center gap-2">
-                        <Clock className="w-4 h-4" /> Start Time
-                      </label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-semibold text-neutral-700 flex items-center gap-2">
+                          <Clock className="w-4 h-4" /> Start Time
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, startTime: new Date().toISOString().slice(0, 16) })}
+                          className="text-[10px] font-bold uppercase text-emerald-600 hover:bg-emerald-50 px-2 py-0.5 rounded transition-all"
+                        >
+                          Now
+                        </button>
+                      </div>
                       <input
                         required
                         type="datetime-local"
@@ -570,9 +579,18 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-sm font-semibold text-neutral-700 flex items-center gap-2">
-                        <Clock className="w-4 h-4" /> End Time
-                      </label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-semibold text-neutral-700 flex items-center gap-2">
+                          <Clock className="w-4 h-4" /> End Time
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, endTime: new Date().toISOString().slice(0, 16) })}
+                          className="text-[10px] font-bold uppercase text-emerald-600 hover:bg-emerald-50 px-2 py-0.5 rounded transition-all"
+                        >
+                          Now
+                        </button>
+                      </div>
                       <input
                         type="datetime-local"
                         value={formData.endTime}
@@ -583,48 +601,104 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
                   </div>
                 </div>
               </motion.div>
-            ) : currentStep === 2 && formData.type === 'Physical' ? (
+            ) : currentStep === 2 ? (
               <motion.div
-                key="step2-physical"
+                key="step2-jobs-materials"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 className="space-y-6"
               >
-                <div className="space-y-4">
+                {formData.type === 'Physical' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-bold text-neutral-700 flex items-center gap-2">
+                        <Package className="w-4 h-4" /> Materials Used
+                      </label>
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      <div className="flex-1 min-w-[200px]">
+                        <select
+                          value={selectedMaterialId}
+                          onChange={(e) => setSelectedMaterialId(e.target.value)}
+                          className="w-full px-4 py-2 bg-white border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                        >
+                          <option value="">Select material</option>
+                          {materials.map(m => (
+                            <option key={m.id} value={m.id}>{m.name} (Stok: {m.quantity} {m.unit})</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="w-24">
+                        <input
+                          type="number"
+                          min="1"
+                          value={materialQuantity}
+                          onChange={(e) => setMaterialQuantity(parseInt(e.target.value))}
+                          className="w-full px-4 py-2 bg-white border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                          placeholder="Qty"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAddMaterial}
+                        disabled={!selectedMaterialId}
+                        className="px-4 bg-neutral-900 text-white rounded-xl font-medium hover:bg-neutral-800 disabled:opacity-50 transition-all"
+                      >
+                        <Plus className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    <div className="bg-neutral-50 rounded-2xl border border-black/5 divide-y divide-black/5 overflow-hidden">
+                      {formData.materialsUsed.length > 0 ? (
+                        formData.materialsUsed.map((m) => (
+                          <div key={m.materialId} className="p-4 flex items-center justify-between bg-white">
+                            <div>
+                              <p className="text-sm font-bold text-neutral-900">{m.name}</p>
+                              <p className="text-[10px] font-black uppercase text-neutral-400">Quantity: {m.quantity}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveMaterial(m.materialId)}
+                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="p-12 text-center text-neutral-400">
+                          <Package className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                          <p className="text-sm italic">No materials added yet.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className={`space-y-4 ${formData.type === 'Physical' ? 'pt-4 border-t border-black/5' : ''}`}>
                   <div className="flex items-center justify-between">
                     <label className="text-sm font-bold text-neutral-700 flex items-center gap-2">
-                      <Package className="w-4 h-4" /> Materials Used
+                      <Briefcase className="w-4 h-4" /> Jobs Performed
                     </label>
                   </div>
-
                   <div className="flex flex-wrap gap-3">
                     <div className="flex-1 min-w-[200px]">
                       <select
-                        value={selectedMaterialId}
-                        onChange={(e) => setSelectedMaterialId(e.target.value)}
+                        value={selectedJobId}
+                        onChange={(e) => setSelectedJobId(e.target.value)}
                         className="w-full px-4 py-2 bg-white border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
                       >
-                        <option value="">Select material</option>
-                        {materials.map(m => (
-                          <option key={m.id} value={m.id}>{m.name} (Stok: {m.quantity} {m.unit})</option>
+                        <option value="">Select job</option>
+                        {jobs.map(j => (
+                          <option key={j.id} value={j.id}>{j.name} (Rp {j.price.toLocaleString()})</option>
                         ))}
                       </select>
                     </div>
-                    <div className="w-24">
-                      <input
-                        type="number"
-                        min="1"
-                        value={materialQuantity}
-                        onChange={(e) => setMaterialQuantity(parseInt(e.target.value))}
-                        className="w-full px-4 py-2 bg-white border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
-                        placeholder="Qty"
-                      />
-                    </div>
                     <button
                       type="button"
-                      onClick={handleAddMaterial}
-                      disabled={!selectedMaterialId}
+                      onClick={handleAddJob}
+                      disabled={!selectedJobId}
                       className="px-4 bg-neutral-900 text-white rounded-xl font-medium hover:bg-neutral-800 disabled:opacity-50 transition-all"
                     >
                       <Plus className="w-5 h-5" />
@@ -632,16 +706,16 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
                   </div>
 
                   <div className="bg-neutral-50 rounded-2xl border border-black/5 divide-y divide-black/5 overflow-hidden">
-                    {formData.materialsUsed.length > 0 ? (
-                      formData.materialsUsed.map((m) => (
-                        <div key={m.materialId} className="p-4 flex items-center justify-between bg-white">
+                    {formData.jobsUsed.length > 0 ? (
+                      formData.jobsUsed.map((j) => (
+                        <div key={j.jobId} className="p-4 flex items-center justify-between bg-white">
                           <div>
-                            <p className="text-sm font-bold text-neutral-900">{m.name}</p>
-                            <p className="text-[10px] font-black uppercase text-neutral-400">Quantity: {m.quantity}</p>
+                            <p className="text-sm font-bold text-neutral-900">{j.name}</p>
+                            <p className="text-[10px] font-black uppercase text-neutral-400">Price: Rp {j.unitPrice.toLocaleString()}</p>
                           </div>
                           <button
                             type="button"
-                            onClick={() => handleRemoveMaterial(m.materialId)}
+                            onClick={() => handleRemoveJob(j.jobId)}
                             className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -650,14 +724,14 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
                       ))
                     ) : (
                       <div className="p-12 text-center text-neutral-400">
-                        <Package className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                        <p className="text-sm italic">No materials added yet.</p>
+                        <Briefcase className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                        <p className="text-sm italic">No jobs added yet.</p>
                       </div>
                     )}
                   </div>
                 </div>
               </motion.div>
-            ) : (currentStep === 2 && formData.type === 'Logic') || (currentStep === 3 && formData.type === 'Physical') ? (
+            ) : currentStep === 3 ? (
               <motion.div
                 key="step-cause"
                 initial={{ opacity: 0, x: 20 }}
@@ -710,27 +784,83 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
               >
                 <div className="space-y-4">
                   <label className="text-sm font-bold text-neutral-700 flex items-center gap-2">
-                    <Camera className="w-4 h-4" /> Eviden Perbaikan (Evidence)
+                    <Camera className="w-4 h-4" /> Photos (Evidence)
                   </label>
-                  <div className="relative aspect-video bg-neutral-50 rounded-3xl border-2 border-dashed border-black/5 overflow-hidden group">
-                    {formData.evidencePhoto ? (
-                      <>
-                        <img src={resolvePhotoUrl(formData.evidencePhoto)} alt="Evidence" className="w-full h-full object-cover" />
-                        <button 
-                          type="button"
-                          onClick={() => setFormData(prev => ({ ...prev, evidencePhoto: '' }))}
-                          className="absolute top-4 right-4 p-2 bg-red-500 text-white rounded-xl opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      </>
-                    ) : (
-                      <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer hover:bg-neutral-100 transition-colors">
-                        <Camera className="w-12 h-12 text-neutral-300 mb-2" />
-                        <span className="text-sm font-bold text-neutral-400">Upload Evidence Photo</span>
-                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handlePhotoUpload(e, 'evidence')} />
-                      </label>
-                    )}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Before Photo */}
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black uppercase text-neutral-400 ml-1">Before Repair</p>
+                      <div className="relative aspect-square bg-neutral-50 rounded-2xl border-2 border-dashed border-black/5 overflow-hidden group">
+                        {formData.beforePhoto ? (
+                          <>
+                            <img src={resolvePhotoUrl(formData.beforePhoto)} alt="Before" className="w-full h-full object-cover" />
+                            <button 
+                              type="button"
+                              onClick={() => setFormData(prev => ({ ...prev, beforePhoto: '' }))}
+                              className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        ) : (
+                          <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer hover:bg-neutral-100 transition-colors">
+                            <Camera className="w-8 h-8 text-neutral-300 mb-1" />
+                            <span className="text-[10px] font-bold text-neutral-400">Upload Before</span>
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handlePhotoUpload(e, 'before')} />
+                          </label>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* After Photo */}
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black uppercase text-neutral-400 ml-1">After Repair</p>
+                      <div className="relative aspect-square bg-neutral-50 rounded-2xl border-2 border-dashed border-black/5 overflow-hidden group">
+                        {formData.afterPhoto ? (
+                          <>
+                            <img src={resolvePhotoUrl(formData.afterPhoto)} alt="After" className="w-full h-full object-cover" />
+                            <button 
+                              type="button"
+                              onClick={() => setFormData(prev => ({ ...prev, afterPhoto: '' }))}
+                              className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        ) : (
+                          <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer hover:bg-neutral-100 transition-colors">
+                            <Camera className="w-8 h-8 text-neutral-300 mb-1" />
+                            <span className="text-[10px] font-bold text-neutral-400">Upload After</span>
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handlePhotoUpload(e, 'after')} />
+                          </label>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Evidence Photo */}
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black uppercase text-neutral-400 ml-1">General Evidence</p>
+                      <div className="relative aspect-square bg-neutral-50 rounded-2xl border-2 border-dashed border-black/5 overflow-hidden group">
+                        {formData.evidencePhoto ? (
+                          <>
+                            <img src={resolvePhotoUrl(formData.evidencePhoto)} alt="Evidence" className="w-full h-full object-cover" />
+                            <button 
+                              type="button"
+                              onClick={() => setFormData(prev => ({ ...prev, evidencePhoto: '' }))}
+                              className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        ) : (
+                          <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer hover:bg-neutral-100 transition-colors">
+                            <Camera className="w-8 h-8 text-neutral-300 mb-1" />
+                            <span className="text-[10px] font-bold text-neutral-400">Upload Evidence</span>
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handlePhotoUpload(e, 'evidence')} />
+                          </label>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -775,7 +905,7 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
             </button>
           )}
           
-          {((formData.type === 'Physical' && currentStep < 4) || (formData.type === 'Logic' && currentStep < 3)) ? (
+          {currentStep < 4 ? (
             <button
               type="button"
               disabled={(currentStep === 0 && !formData.customerId) || (currentStep === 1 && !formData.type)}
@@ -787,7 +917,7 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
           ) : (
             <button
               onClick={handleSubmit}
-              disabled={isUploading || !formData.evidencePhoto}
+              disabled={isUploading || (!formData.evidencePhoto && !formData.afterPhoto)}
               className="flex-[2] py-4 px-6 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 disabled:opacity-50 transition-all shadow-xl shadow-emerald-600/20 flex items-center justify-center gap-2"
             >
               {isUploading ? (

@@ -1800,25 +1800,34 @@ app.get('/api/proxy-image', async (req, res) => {
   
   // Handle relative URLs (e.g. from /api/telegram-photo)
   if (imageUrl.startsWith('/')) {
-    const protocol = req.secure ? 'https' : 'http';
-    imageUrl = `${protocol}://${req.headers.host}${imageUrl}`;
+    imageUrl = `http://localhost:3000${imageUrl}`;
   }
   
   console.log(`[Proxy] Fetching image: ${imageUrl}`);
   
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+    const timeout = setTimeout(() => controller.abort(), 60000); // 60 second timeout
 
-    const response = await fetch(imageUrl, {
+    const fetchOptions: any = {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-        'Referer': new URL(imageUrl).origin
+        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
       },
       redirect: 'follow',
       signal: controller.signal
-    });
+    };
+
+    // Only add Referer if it's an absolute external URL
+    if (imageUrl.startsWith('http') && !imageUrl.includes('localhost')) {
+      try {
+        fetchOptions.headers['Referer'] = new URL(imageUrl).origin;
+      } catch (e) {
+        // Ignore URL parsing errors
+      }
+    }
+
+    const response = await fetch(imageUrl, fetchOptions);
     
     clearTimeout(timeout);
     if (!response.ok) {

@@ -14,7 +14,7 @@ import {
   preventiveSubCategoryWeights
 } from '../weights';
 import { Ticket, TicketHistory, Technician, Customer, TicketStatus, TicketPriority, TicketCategory, RepairRecord, TicketNote, UserProfile, ChecklistItem, Notification, Material } from '../types';
-import { X, Edit2, Check, TrendingUp, Clock, User, ArrowRight, History, Info, Wrench, Send, MessageSquare, UserPlus, RefreshCw, PlusCircle, Link as LinkIcon, AlertTriangle, CheckCircle, Package, StickyNote, ChevronRight, Loader2, Hash, Box, MapPin, Phone, Mail, Camera, Play, Square, Navigation, Timer, HelpCircle, Trash2, ExternalLink } from 'lucide-react';
+import { X, Edit2, Check, TrendingUp, Clock, User, ArrowRight, History, Info, Wrench, Send, MessageSquare, UserPlus, RefreshCw, PlusCircle, Link as LinkIcon, AlertTriangle, CheckCircle, Package, StickyNote, ChevronRight, Loader2, Hash, Box, MapPin, Phone, Mail, Camera, Play, Square, Navigation, Timer, HelpCircle, Trash2, ExternalLink, Calendar, Tag } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from './Toast';
 import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
@@ -24,6 +24,7 @@ const hasValidMapsKey = Boolean(API_KEY) && API_KEY !== '';
 
 import DependencyManagerModal from './DependencyManagerModal';
 import TechnicianGuide from './TechnicianGuide';
+import RepairRecordForm from './RepairRecordForm';
 
 interface TicketDetailsModalProps {
   ticket: Ticket & { customerName?: string };
@@ -66,6 +67,7 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<TicketStatus | null>(null);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [isRepairModalOpen, setIsRepairModalOpen] = useState(false);
   const canManage = profile?.role === 'superadmin' || profile?.role === 'admin';
   const [isEditingCategory, setIsEditingCategory] = useState(false);
   const [isEditingSubCategory, setIsEditingSubCategory] = useState(false);
@@ -219,13 +221,16 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
     return technicians.find(t => t.id === id)?.name || 'Unknown';
   };
 
-  const formatValue = (value: string | string[]) => {
+  const formatValue = (value: string | string[] | number | boolean | undefined) => {
+    if (value === undefined || value === null) return '---';
+    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+    if (typeof value === 'number') return value.toString();
     if (Array.isArray(value)) {
       if (value.length === 0) return 'Unassigned';
       return value.map(id => getTechnicianName(id)).join(', ');
     }
-    if (!value) return 'Unassigned';
-    return getTechnicianName(value);
+    if (!value) return '---';
+    return getTechnicianName(value as string);
   };
 
   const handleUpdateTechnician = async (technicianId: string) => {
@@ -370,8 +375,9 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
 
       await addDoc(collection(db, 'ticketHistory'), {
         ticketId: ticket.id,
-        type: 'note_added',
-        toValue: `Updated due date to: ${dateStr || 'Not Set'}`,
+        type: 'due_date_change',
+        fromValue: ticket.dueDate ? ticket.dueDate.toDate().toISOString().split('T')[0] : 'Not Set',
+        toValue: dateStr || 'Not Set',
         changedBy: profile?.name || auth.currentUser?.email || 'Unknown',
         timestamp: serverTimestamp()
       });
@@ -399,7 +405,8 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
         fromValue: oldPriority,
         toValue: priority,
         changedBy: profile?.name || auth.currentUser?.email || 'Unknown',
-        timestamp: serverTimestamp()
+        timestamp: serverTimestamp(),
+        description: 'Priority updated manually'
       });
 
       showToast(`Priority updated to ${priority}`);
@@ -427,12 +434,12 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
 
       await addDoc(collection(db, 'ticketHistory'), {
         ticketId: ticket.id,
-        type: 'status_change',
+        type: 'category_change',
         fromValue: oldCategory,
         toValue: category,
         changedBy: profile?.name || auth.currentUser?.email || 'Unknown',
         timestamp: serverTimestamp(),
-        note: `Category updated. Points recalculated to ${newPoints}`
+        description: `Category updated. Points recalculated to ${newPoints}`
       });
 
       setIsEditingCategory(false);
@@ -461,12 +468,12 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
 
       await addDoc(collection(db, 'ticketHistory'), {
         ticketId: ticket.id,
-        type: 'status_change',
+        type: 'subcategory_change',
         fromValue: oldSubCategory,
         toValue: tempSubCategory,
         changedBy: profile?.name || auth.currentUser?.email || 'Unknown',
         timestamp: serverTimestamp(),
-        note: `Sub-category updated. Points recalculated to ${newPoints}`
+        description: `Sub-category updated. Points recalculated to ${newPoints}`
       });
 
       setIsEditingSubCategory(false);
@@ -498,6 +505,15 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
         timerStartedAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
+
+      await addDoc(collection(db, 'ticketHistory'), {
+        ticketId: ticket.id,
+        type: 'timer_event',
+        toValue: 'started',
+        changedBy: profile?.name || auth.currentUser?.email || 'Unknown',
+        timestamp: serverTimestamp(),
+        description: 'Work timer started'
+      });
       showToast('Work timer started');
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `tickets/${ticket.id}`);
@@ -523,10 +539,12 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
 
       await addDoc(collection(db, 'ticketHistory'), {
         ticketId: ticket.id,
-        type: 'note_added',
-        toValue: `Work session ended: ${diffMinutes} minutes. Total: ${totalTime} minutes.`,
+        type: 'timer_event',
+        fromValue: 'started',
+        toValue: 'stopped',
         changedBy: profile?.name || auth.currentUser?.email || 'Unknown',
-        timestamp: serverTimestamp()
+        timestamp: serverTimestamp(),
+        description: `Work session ended: ${diffMinutes} minutes. Total: ${totalTime} minutes.`
       });
 
       showToast(`Work timer stopped. Added ${diffMinutes} minutes.`);
@@ -765,6 +783,10 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
       case 'assignment_change': return <UserPlus className="w-3.5 h-3.5 text-purple-500" />;
       case 'priority_change': return <AlertTriangle className="w-3.5 h-3.5 text-orange-500" />;
       case 'dependency_change': return <LinkIcon className="w-3.5 h-3.5 text-blue-500" />;
+      case 'category_change': return <Tag className="w-3.5 h-3.5 text-indigo-500" />;
+      case 'subcategory_change': return <Tag className="w-3.5 h-3.5 text-indigo-400" />;
+      case 'due_date_change': return <Calendar className="w-3.5 h-3.5 text-rose-500" />;
+      case 'timer_event': return <Clock className="w-3.5 h-3.5 text-emerald-600" />;
       case 'note_added': return <MessageSquare className="w-3.5 h-3.5 text-orange-500" />;
       default: return <History className="w-3.5 h-3.5 text-neutral-400" />;
     }
@@ -783,6 +805,7 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
               <ArrowRight className="w-3 h-3 text-neutral-400" />
               <span className="font-bold uppercase text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-md border border-emerald-200">{item.toValue}</span>
             </div>
+            {item.description && <p className="text-xs text-neutral-500 italic mt-1">"{item.description}"</p>}
           </div>
         );
       case 'assignment_change':
@@ -805,6 +828,48 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
               <ArrowRight className="w-3 h-3 text-neutral-400" />
               <span className="font-bold uppercase text-[10px] px-2 py-0.5 bg-orange-100 text-orange-700 rounded-md border border-orange-200">{item.toValue}</span>
             </div>
+          </div>
+        );
+      case 'category_change':
+        return (
+          <div className="flex flex-col gap-1">
+            <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-wider">Category Update</span>
+            <div className="flex items-center gap-2">
+              <span className="font-bold uppercase text-[10px] px-2 py-0.5 bg-neutral-100 text-neutral-600 rounded-md border border-black/5">{item.fromValue}</span>
+              <ArrowRight className="w-3 h-3 text-neutral-400" />
+              <span className="font-bold uppercase text-[10px] px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-md border border-indigo-200">{item.toValue}</span>
+            </div>
+            {item.description && <p className="text-xs text-neutral-500 italic mt-1">{item.description}</p>}
+          </div>
+        );
+      case 'subcategory_change':
+        return (
+          <div className="flex flex-col gap-1">
+            <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-wider">Sub-Category Update</span>
+            <div className="flex items-center gap-2">
+              <span className="font-bold uppercase text-[10px] px-2 py-0.5 bg-neutral-100 text-neutral-600 rounded-md border border-black/5">{item.fromValue}</span>
+              <ArrowRight className="w-3 h-3 text-neutral-400" />
+              <span className="font-bold uppercase text-[10px] px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-md border border-indigo-200">{item.toValue}</span>
+            </div>
+            {item.description && <p className="text-xs text-neutral-500 italic mt-1">{item.description}</p>}
+          </div>
+        );
+      case 'due_date_change':
+        return (
+          <div className="flex flex-col gap-1">
+            <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-wider">Due Date Update</span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-neutral-600 font-medium">{item.fromValue}</span>
+              <ArrowRight className="w-3 h-3 text-neutral-400" />
+              <span className="text-sm text-rose-700 font-bold">{item.toValue}</span>
+            </div>
+          </div>
+        );
+      case 'timer_event':
+        return (
+          <div className="flex flex-col gap-1">
+            <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-wider">Timer Event</span>
+            <p className="text-sm text-neutral-700">{item.description}</p>
           </div>
         );
       case 'dependency_change':
@@ -1529,9 +1594,18 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
 
                 {/* Repair Records Section */}
                 <section className="space-y-4">
-                  <h4 className="text-xs font-bold text-neutral-400 uppercase tracking-widest flex items-center gap-2">
-                    <Wrench className="w-3 h-3" /> Repair Records
-                  </h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-neutral-400 uppercase tracking-widest flex items-center gap-2">
+                      <Wrench className="w-3 h-3" /> Repair Records
+                    </h4>
+                    <button
+                      onClick={() => setIsRepairModalOpen(true)}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-[10px] font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/10"
+                    >
+                      <PlusCircle className="w-3.5 h-3.5" />
+                      Add Record
+                    </button>
+                  </div>
                   <div className="space-y-4">
                     {repairRecords.length > 0 ? (
                       repairRecords.map(record => (
@@ -1920,6 +1994,19 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
         )}
       </AnimatePresence>
       <TechnicianGuide isOpen={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
+      
+      <AnimatePresence>
+        {isRepairModalOpen && (
+          <RepairRecordForm 
+            ticketId={ticket.id} 
+            onClose={() => setIsRepairModalOpen(false)} 
+            onSuccess={() => {
+              setIsRepairModalOpen(false);
+              showToast('Repair record added successfully');
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

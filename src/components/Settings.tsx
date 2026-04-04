@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Settings as SettingsIcon, Shield, Bell, Database, Globe, ChevronLeft, Send } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-export default function Settings() {
+export default function Settings({ onNavigate }: { onNavigate?: (view: string) => void }) {
   const [activeSection, setActiveSection] = useState<string | null>(null);
 
   const sections = [
@@ -11,35 +11,55 @@ export default function Settings() {
       title: 'System Configuration',
       icon: Database,
       description: 'Manage database backups, retention policies, and system-wide defaults.',
-      items: ['Database Backup', 'Auto-Archive Tickets', 'Default Priority']
+      items: [
+        { label: 'Database Backup', action: () => {} },
+        { label: 'Auto-Archive Tickets', action: () => {} },
+        { label: 'Default Priority', action: () => {} }
+      ]
     },
     {
       id: 'security',
       title: 'Security & Access',
       icon: Shield,
       description: 'Configure multi-factor authentication, IP whitelisting, and role permissions.',
-      items: ['MFA Settings', 'IP Access Control', 'Audit Logs']
+      items: [
+        { label: 'MFA Settings', action: () => {} },
+        { label: 'IP Access Control', action: () => {} },
+        { label: 'Audit Logs', action: () => {} }
+      ]
     },
     {
       id: 'notifications',
       title: 'Notifications',
       icon: Bell,
       description: 'Set up email, SMS, and push notification templates for ticket updates.',
-      items: ['Email Templates', 'SMS Gateway', 'Push Notifications']
+      items: [
+        { label: 'Email Templates', action: () => {} },
+        { label: 'SMS Gateway', action: () => {} },
+        { label: 'Push Notifications', action: () => {} }
+      ]
     },
     {
       id: 'localization',
       title: 'Localization',
       icon: Globe,
       description: 'Change system language, timezone, and currency formats.',
-      items: ['Language', 'Timezone', 'Currency']
+      items: [
+        { label: 'Language', action: () => {} },
+        { label: 'Timezone', action: () => {} },
+        { label: 'Currency', action: () => {} }
+      ]
     },
     {
       id: 'integrations',
       title: 'Integrations',
       icon: Send,
       description: 'Connect with external services like Telegram for automated notifications.',
-      items: ['Telegram Bot Settings', 'Email Gateway', 'API Access']
+      items: [
+        { label: 'Telegram Bot Settings', action: () => onNavigate?.('telegram') },
+        { label: 'Email Gateway', action: () => {} },
+        { label: 'API Access', action: () => {} }
+      ]
     }
   ];
 
@@ -75,12 +95,13 @@ export default function Settings() {
             </div>
             <div className="space-y-2">
               {section.items.map(item => (
-                <div
-                  key={item}
+                <button
+                  key={item.label}
+                  onClick={item.action}
                   className="w-full text-left px-4 py-2 text-sm text-neutral-600 hover:bg-neutral-50 rounded-lg transition-colors"
                 >
-                  {item}
-                </div>
+                  {item.label}
+                </button>
               ))}
             </div>
           </motion.div>

@@ -52,6 +52,7 @@ import autoTable from 'jspdf-autotable';
 import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from './Toast';
 import ProjectReport from './ProjectReport';
+import ConfirmationModal from './ConfirmationModal';
 
 interface ProjectListProps {
   profile: UserProfile | null;
@@ -70,6 +71,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
   const [viewingReport, setViewingReport] = useState<Project | null>(null);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
   const [activeProjectForGallery, setActiveProjectForGallery] = useState<Project | null>(null);
+  const [isConfirmClearBOQOpen, setIsConfirmClearBOQOpen] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -209,7 +211,8 @@ export default function ProjectList({ profile }: ProjectListProps) {
       { title: 'BERITA ACARA', stages: ['Berita acara'] },
       { title: 'AS BUILT DRAWING SMALL WORLD', stages: ['As built drawing'] }
     ];
-
+    
+    const projectEvidence = getProjectEvidence(project);
     const predefinedStages = sections.flatMap(s => s.stages);
     const otherEvidence = projectEvidence.filter(e => !predefinedStages.includes(e.stage));
     
@@ -300,13 +303,14 @@ export default function ProjectList({ profile }: ProjectListProps) {
       // If it looks like a Telegram file_id (no http and no slash)
       let finalUrl = url;
       if (!url.startsWith('http') && !url.includes('/')) {
-        finalUrl = `${window.location.origin}/api/telegram-photo/${url}`;
+        finalUrl = `/api/telegram-photo/${url}`;
       }
 
       // Use server-side proxy to bypass CORS issues for PDF generation
       const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(finalUrl)}`;
 
       const img = new Image();
+      img.crossOrigin = "anonymous";
       
       const timeout = setTimeout(() => {
         img.src = ""; // Stop loading
@@ -361,7 +365,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
 
         let finalUrl = url;
         if (!url.startsWith('http') && !url.includes('/')) {
-          finalUrl = `${window.location.origin}/api/telegram-photo/${url}`;
+          finalUrl = `/api/telegram-photo/${url}`;
         }
         const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(finalUrl)}`;
         const response = await fetch(proxyUrl);
@@ -994,6 +998,16 @@ export default function ProjectList({ profile }: ProjectListProps) {
           }
         : j
     ));
+  };
+
+  const clearAllJobs = () => {
+    setIsConfirmClearBOQOpen(true);
+  };
+
+  const confirmClearAllJobs = () => {
+    setSelectedJobs([]);
+    showToast('Semua data BOQ rekonsiliasi berhasil dihapus', 'success');
+    setIsConfirmClearBOQOpen(false);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement> | React.DragEvent) => {
@@ -2132,7 +2146,19 @@ export default function ProjectList({ profile }: ProjectListProps) {
                 {/* Jobs Section */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-bold text-neutral-900 uppercase tracking-wider">BOQ REKONSILIASI</h4>
+                    <div className="flex items-center gap-3">
+                      <h4 className="text-sm font-bold text-neutral-900 uppercase tracking-wider">BOQ REKONSILIASI</h4>
+                      {selectedJobs.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={clearAllJobs}
+                          className="flex items-center gap-1.5 px-2 py-1 bg-red-50 text-red-600 hover:bg-red-100 rounded-md text-[10px] font-bold transition-all"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          Hapus Semua
+                        </button>
+                      )}
+                    </div>
                     <div className="text-sm font-bold text-emerald-600">
                       BOQ Total: Rp {selectedJobs.reduce((sum, j) => sum + j.subtotal, 0).toLocaleString()}
                     </div>
@@ -2467,6 +2493,16 @@ export default function ProjectList({ profile }: ProjectListProps) {
           </div>
         )}
       </AnimatePresence>
+      {/* Confirmation Modal for Clear BOQ */}
+      <ConfirmationModal
+        isOpen={isConfirmClearBOQOpen}
+        title="Hapus Semua BOQ"
+        message="Apakah Anda yakin ingin menghapus semua data BOQ rekonsiliasi pada proyek ini?"
+        confirmLabel="Hapus Semua"
+        onConfirm={confirmClearAllJobs}
+        onCancel={() => setIsConfirmClearBOQOpen(false)}
+        variant="danger"
+      />
     </div>
   );
 }

@@ -16,7 +16,7 @@ export default function PekerjaanList() {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingJob, setEditingJob] = useState<Job | null>(null);
   const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]);
-  const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id?: string; isBulk?: boolean }>({ isOpen: false });
+  const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id?: string; isBulk?: boolean; isAll?: boolean }>({ isOpen: false });
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Pagination state
@@ -269,6 +269,28 @@ export default function PekerjaanList() {
     reader.readAsArrayBuffer(file);
   };
 
+  const handleDeleteAll = async () => {
+    if (jobs.length === 0) return;
+    setConfirmDelete({ isOpen: true, isAll: true });
+  };
+
+  const confirmDeleteAll = async () => {
+    try {
+      setLoading(true);
+      const batch = writeBatch(db);
+      jobs.forEach(job => {
+        batch.delete(doc(db, 'jobs', job.id));
+      });
+      await batch.commit();
+      showToast('Seluruh data BOQ berhasil dihapus', 'success');
+      setConfirmDelete({ isOpen: false });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'jobs/all');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDownloadTemplate = () => {
     const templateData = [{
       'Designator': 'KBL-01',
@@ -331,6 +353,16 @@ export default function PekerjaanList() {
             <Download className="w-5 h-5" />
             <span className="hidden sm:inline">Download</span>
           </button>
+          {jobs.length > 0 && (
+            <button
+              onClick={handleDeleteAll}
+              className="flex items-center gap-2 px-4 py-2 bg-red-50 border border-red-100 text-red-600 rounded-xl font-medium hover:bg-red-100 transition-all shadow-sm"
+              title="Hapus Semua Data"
+            >
+              <Trash2 className="w-5 h-5" />
+              <span className="hidden sm:inline">Hapus Semua</span>
+            </button>
+          )}
           <AnimatePresence>
             {selectedJobIds.length > 0 && (
               <motion.div
@@ -650,14 +682,24 @@ export default function PekerjaanList() {
       {/* Confirmation Modal */}
       <ConfirmationModal
         isOpen={confirmDelete.isOpen}
-        title={confirmDelete.isBulk ? 'Delete Multiple BOQ' : 'Delete BOQ'}
-        message={
-          confirmDelete.isBulk 
-            ? `Are you sure you want to delete ${selectedJobIds.length} selected BOQ? This action cannot be undone.`
-            : 'Are you sure you want to delete this BOQ? This action cannot be undone.'
+        title={
+          confirmDelete.isAll ? 'Hapus Seluruh BOQ' :
+          confirmDelete.isBulk ? 'Delete Multiple BOQ' : 
+          'Delete BOQ'
         }
-        confirmLabel="Delete"
-        onConfirm={confirmDelete.isBulk ? confirmBulkDelete : confirmSingleDelete}
+        message={
+          confirmDelete.isAll 
+            ? `PERINGATAN: Anda akan menghapus SELURUH data BOQ (${jobs.length} item). Tindakan ini tidak dapat dibatalkan. Apakah Anda yakin?`
+            : confirmDelete.isBulk 
+              ? `Are you sure you want to delete ${selectedJobIds.length} selected BOQ? This action cannot be undone.`
+              : 'Are you sure you want to delete this BOQ? This action cannot be undone.'
+        }
+        confirmLabel={confirmDelete.isAll ? 'Hapus Semua' : 'Delete'}
+        onConfirm={
+          confirmDelete.isAll ? confirmDeleteAll :
+          confirmDelete.isBulk ? confirmBulkDelete : 
+          confirmSingleDelete
+        }
         onCancel={() => setConfirmDelete({ isOpen: false })}
         variant="danger"
       />

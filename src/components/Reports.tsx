@@ -265,6 +265,46 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
     { name: 'Breached', value: slaCounts['breached'], color: '#ef4444' }
   ].filter(d => d.value > 0);
 
+  // Average time per ticket type
+  const categoryTimeMap: Record<string, { totalTime: number, count: number }> = {};
+  filteredTickets.forEach(t => {
+    if ((t.status === 'resolved' || t.status === 'closed') && t.updatedAt && t.createdAt) {
+      const diff = t.updatedAt.toMillis() - t.createdAt.toMillis();
+      const hours = diff / (1000 * 60 * 60);
+      if (!categoryTimeMap[t.category]) {
+        categoryTimeMap[t.category] = { totalTime: 0, count: 0 };
+      }
+      categoryTimeMap[t.category].totalTime += hours;
+      categoryTimeMap[t.category].count++;
+    }
+  });
+  const avgTimeByCategoryData = Object.entries(categoryTimeMap).map(([name, data]) => ({
+    name,
+    avgTime: parseFloat((data.totalTime / data.count).toFixed(1))
+  })).sort((a, b) => b.avgTime - a.avgTime);
+
+  // Materials used per technician
+  const techMaterialMap: Record<string, { name: string, totalMaterials: number, uniqueMaterials: Set<string> }> = {};
+  technicians.forEach(tech => {
+    techMaterialMap[tech.id] = { name: tech.name, totalMaterials: 0, uniqueMaterials: new Set() };
+  });
+
+  filteredRepairRecords.forEach(record => {
+    if (techMaterialMap[record.technicianId]) {
+      record.materialsUsed?.forEach(usage => {
+        techMaterialMap[record.technicianId].totalMaterials += usage.quantity;
+        techMaterialMap[record.technicianId].uniqueMaterials.add(usage.materialId);
+      });
+    }
+  });
+
+  const techMaterialData = Object.entries(techMaterialMap).map(([id, data]) => ({
+    id,
+    name: data.name,
+    totalMaterials: data.totalMaterials,
+    uniqueMaterialsCount: data.uniqueMaterials.size
+  })).filter(d => d.totalMaterials > 0).sort((a, b) => b.totalMaterials - a.totalMaterials);
+
   // Customer Satisfaction by Technician
   const satisfactionData = technicians.map(tech => {
     const techTickets = filteredTickets.filter(t => t.technicianIds?.includes(tech.id) && t.rating);
@@ -416,7 +456,8 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
       ["Avg Resolution Time", "4.2 hours"],
       ["Top Technician", topTechnician.name],
       ["Most Used Material", topMaterial.name],
-      ["Total Material Cost", `Rp ${grandTotalCost.toLocaleString()}`]
+      ["Total Material Cost", `Rp ${grandTotalCost.toLocaleString()}`],
+      ["Avg Satisfaction", satisfactionData.length > 0 ? (satisfactionData.reduce((acc, d) => acc + d.rating, 0) / satisfactionData.length).toFixed(1) : "N/A"]
     ];
     
     doc.autoTable({
@@ -429,19 +470,37 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
     
     // Technician Table
     doc.text("Technician Performance", 14, (doc as any).lastAutoTable.finalY + 15);
-    const techTableData = chartData.map(t => [
-      t.name, 
-      t.resolved.toString(), 
-      t.points.toFixed(1), 
-      `${t.avgResolutionTime}h`
-    ]);
+    const techTableData = chartData.map(t => {
+      const techMat = techMaterialData.find(m => m.name === t.name);
+      const techSat = satisfactionData.find(s => s.name === t.name);
+      return [
+        t.name, 
+        t.resolved.toString(), 
+        t.points.toFixed(1), 
+        `${t.avgResolutionTime}h`,
+        techMat?.totalMaterials.toString() || "0",
+        techSat?.rating.toString() || "N/A"
+      ];
+    });
     
     doc.autoTable({
       startY: (doc as any).lastAutoTable.finalY + 20,
-      head: [["Technician", "Resolved", "Points", "Avg Time"]],
+      head: [["Technician", "Resolved", "Points", "Avg Time", "Materials", "Rating"]],
       body: techTableData,
       theme: 'grid',
       headStyles: { fillColor: [59, 130, 246] }
+    });
+
+    // Avg Time per Ticket Type Table
+    doc.text("Avg Time per Ticket Type", 14, (doc as any).lastAutoTable.finalY + 15);
+    const typeTimeTableData = avgTimeByCategoryData.map(t => [t.name, `${t.avgTime}h`]);
+    
+    doc.autoTable({
+      startY: (doc as any).lastAutoTable.finalY + 20,
+      head: [["Ticket Type", "Avg Resolution Time"]],
+      body: typeTimeTableData,
+      theme: 'grid',
+      headStyles: { fillColor: [139, 92, 246] }
     });
     
     // Material Table
@@ -679,6 +738,38 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
             </div>
           </div>
 
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="bg-white p-6 rounded-2xl border border-black/5 shadow-sm">
+              <h3 className="text-lg font-bold text-neutral-900 mb-6">Avg Resolution Time by Category</h3>
+              <div className="h-80 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={avgTimeByCategoryData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#737373' }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#737373' }} />
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                    <Bar dataKey="avgTime" name="Avg Time (hrs)" fill="#8b5cf6" radius={[4, 4, 0, 0]} barSize={30} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-2xl border border-black/5 shadow-sm">
+              <h3 className="text-lg font-bold text-neutral-900 mb-6">Materials Used by Technician</h3>
+              <div className="h-80 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={techMaterialData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#737373' }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#737373' }} />
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                    <Bar dataKey="totalMaterials" name="Total Materials" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={30} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
           <div className="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
             <div className="p-6 border-b border-black/5">
               <h3 className="font-bold text-neutral-900">Technician Performance Details</h3>
@@ -691,7 +782,7 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
                     <th className="px-6 py-4 text-center">Resolved</th>
                     <th className="px-6 py-4 text-center">Points</th>
                     <th className="px-6 py-4 text-center">Avg. Time</th>
-                    <th className="px-6 py-4 text-center">Work Time</th>
+                    <th className="px-6 py-4 text-center">Materials</th>
                     <th className="px-6 py-4 text-center">Checklist</th>
                     <th className="px-6 py-4 text-center">Satisfaction</th>
                   </tr>
@@ -699,13 +790,14 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
                 <tbody className="divide-y divide-black/5">
                   {chartData.map((tech) => {
                     const satisfaction = satisfactionData.find(s => s.name === tech.name);
+                    const techMat = techMaterialData.find(m => m.name === tech.name);
                     return (
                       <tr key={tech.id} className="hover:bg-neutral-50 transition-colors">
                         <td className="px-6 py-4 font-medium text-neutral-900">{tech.name}</td>
                         <td className="px-6 py-4 text-center text-neutral-600 font-mono">{tech.resolved}</td>
                         <td className="px-6 py-4 text-center text-neutral-600 font-mono">{tech.points.toFixed(1)}</td>
                         <td className="px-6 py-4 text-center text-neutral-600 font-mono">{tech.avgResolutionTime}h</td>
-                        <td className="px-6 py-4 text-center text-neutral-600 font-mono">{tech.avgWorkTime}m</td>
+                        <td className="px-6 py-4 text-center text-neutral-600 font-mono">{techMat?.totalMaterials || 0}</td>
                         <td className="px-6 py-4 text-center text-neutral-600 font-mono">{tech.checklistRate}%</td>
                         <td className="px-6 py-4 text-center">
                           <div className="flex items-center justify-center gap-1">

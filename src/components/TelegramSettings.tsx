@@ -41,9 +41,15 @@ export default function TelegramSettings() {
 
   // System Config State
   const [systemConfig, setSystemConfig] = useState<{
+    botToken: string;
+    welcomeMessage: string;
+    helpMessage: string;
     allowedStatuses: string[];
     allowedPriorities: string[];
   }>({
+    botToken: '',
+    welcomeMessage: 'Welcome to Service Desk Bot! 🤖\n\nPlease link your Telegram account in the app profile settings using this ID: `{chatId}`\n\nKetik `/help` untuk panduan.',
+    helpMessage: '📑 *Panduan Bot Telegram* 📑\n\nBot ini digunakan untuk membantu operasional Service Desk.\n\nSilakan hubungi admin untuk daftar perintah yang tersedia atau gunakan menu bot jika tersedia.',
     allowedStatuses: ['open', 'in-progress', 'resolved', 'closed'],
     allowedPriorities: ['low', 'medium', 'high', 'urgent']
   });
@@ -66,7 +72,7 @@ export default function TelegramSettings() {
       setTechnicians(snap.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile)));
       
       // Simulate checking bot status
-      setTimeout(() => setBotStatus('online'), 1000);
+      setTimeout(() => setBotStatus(systemConfig.botToken ? 'online' : 'offline'), 1000);
     } catch (error) {
       console.error("Error fetching technicians:", error);
     } finally {
@@ -115,7 +121,11 @@ export default function TelegramSettings() {
     try {
       const snap = await getDocs(collection(db, 'telegramConfig'));
       if (!snap.empty) {
-        setSystemConfig(snap.docs[0].data() as any);
+        const data = snap.docs[0].data();
+        setSystemConfig(prev => ({
+          ...prev,
+          ...data
+        }));
       }
     } catch (error) {
       console.error("Error fetching config:", error);
@@ -143,7 +153,28 @@ export default function TelegramSettings() {
       } else {
         await addDoc(collection(db, 'telegramConfig'), data);
       }
+
+      // Also update the system commands for start and help if they exist in DB
+      const startCmdQuery = query(collection(db, 'telegramCommands'), where('command', '==', 'start'));
+      const startSnap = await getDocs(startCmdQuery);
+      if (!startSnap.empty) {
+        await updateDoc(doc(db, 'telegramCommands', startSnap.docs[0].id), {
+          response: systemConfig.welcomeMessage,
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      const helpCmdQuery = query(collection(db, 'telegramCommands'), where('command', '==', 'help'));
+      const helpSnap = await getDocs(helpCmdQuery);
+      if (!helpSnap.empty) {
+        await updateDoc(doc(db, 'telegramCommands', helpSnap.docs[0].id), {
+          response: systemConfig.helpMessage,
+          updatedAt: serverTimestamp()
+        });
+      }
+
       alert("System configuration saved successfully!");
+      fetchCommands(); // Refresh commands to show updated responses
     } catch (error) {
       console.error("Error saving config:", error);
     } finally {
@@ -330,7 +361,7 @@ export default function TelegramSettings() {
             <button 
               onClick={() => {
                 setBotStatus('checking');
-                setTimeout(() => setBotStatus('online'), 1500);
+                setTimeout(() => setBotStatus(systemConfig.botToken ? 'online' : 'offline'), 1500);
               }}
               className="p-2 hover:bg-neutral-100 rounded-xl transition-colors"
             >
@@ -387,6 +418,64 @@ export default function TelegramSettings() {
             </button>
           </div>
           <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="md:col-span-2 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-neutral-500 uppercase tracking-wider">Telegram Bot Token</label>
+                  <div className="relative">
+                    <input 
+                      type="password"
+                      value={systemConfig.botToken}
+                      onChange={(e) => setSystemConfig({ ...systemConfig, botToken: e.target.value })}
+                      placeholder="123456789:ABCDefGhIJKlmNoPQRstUVwxyZ"
+                      className="w-full px-4 py-2 bg-neutral-50 border border-black/5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 font-mono"
+                    />
+                    <Shield className="w-4 h-4 text-neutral-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                  </div>
+                  <p className="text-[10px] text-neutral-400 italic">Get this from @BotFather on Telegram.</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-neutral-500 uppercase tracking-wider">Bot Username</label>
+                  <div className="relative">
+                    <input 
+                      type="text"
+                      placeholder="@YourBotName"
+                      className="w-full px-4 py-2 bg-neutral-50 border border-black/5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                    />
+                    <Send className="w-4 h-4 text-neutral-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                  </div>
+                  <p className="text-[10px] text-neutral-400 italic">For display purposes only.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-neutral-500 uppercase tracking-wider">Default Welcome Message (/start)</label>
+                  <textarea 
+                    value={systemConfig.welcomeMessage}
+                    onChange={(e) => setSystemConfig({ ...systemConfig, welcomeMessage: e.target.value })}
+                    rows={4}
+                    className="w-full px-4 py-2 bg-neutral-50 border border-black/5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 resize-none font-mono"
+                    placeholder="Welcome message..."
+                  />
+                  <p className="text-[10px] text-neutral-400 italic">Supports {`{chatId}`} variable.</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-neutral-500 uppercase tracking-wider">Default Help Message (/help)</label>
+                  <textarea 
+                    value={systemConfig.helpMessage}
+                    onChange={(e) => setSystemConfig({ ...systemConfig, helpMessage: e.target.value })}
+                    rows={4}
+                    className="w-full px-4 py-2 bg-neutral-50 border border-black/5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 resize-none font-mono"
+                    placeholder="Help guide..."
+                  />
+                  <p className="text-[10px] text-neutral-400 italic">Supports Markdown formatting.</p>
+                </div>
+              </div>
+
+              <div className="h-px bg-black/5" />
+            </div>
+
             <div className="space-y-4">
               <label className="block text-xs font-bold text-neutral-500 uppercase tracking-wider">Allowed Ticket Statuses</label>
               <div className="flex flex-wrap gap-2">

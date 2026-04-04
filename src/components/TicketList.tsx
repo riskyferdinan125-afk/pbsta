@@ -358,7 +358,8 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
           fromValue: oldStatus,
           toValue: status,
           changedBy: profile?.name || auth.currentUser?.email || 'Unknown',
-          timestamp: serverTimestamp()
+          timestamp: serverTimestamp(),
+          description: 'Status updated manually'
         });
         showToast(`Status updated to ${status.replace('-', ' ')}`);
       }
@@ -443,8 +444,9 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
           type: 'priority_change',
           fromValue: oldPriority,
           toValue: priority,
-          changedBy: auth.currentUser?.email || 'Unknown',
-          timestamp: serverTimestamp()
+          changedBy: profile?.name || auth.currentUser?.email || 'Unknown',
+          timestamp: serverTimestamp(),
+          description: 'Priority updated manually'
         });
         showToast(`Priority updated to ${priority}`);
       }

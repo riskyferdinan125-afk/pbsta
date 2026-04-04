@@ -209,11 +209,12 @@ export interface RepairRecord {
 export interface TicketHistory {
   id: string;
   ticketId: string;
-  type: 'status_change' | 'assignment_change' | 'priority_change' | 'note_added' | 'created' | 'dependency_change';
-  fromValue?: string | string[];
-  toValue: string | string[];
+  type: 'status_change' | 'assignment_change' | 'priority_change' | 'note_added' | 'created' | 'dependency_change' | 'category_change' | 'subcategory_change' | 'due_date_change' | 'timer_event';
+  fromValue?: string | string[] | number | boolean;
+  toValue: string | string[] | number | boolean;
   changedBy: string;
   timestamp: Timestamp;
+  description?: string;
 }
 
 export interface TicketNote {

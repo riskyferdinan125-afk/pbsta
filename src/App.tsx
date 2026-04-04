@@ -435,7 +435,7 @@ function AppContent() {
               {activeView === 'reports' && <Reports profile={profile} />}
               {activeView === 'productivity' && <EmployeeProductivity profile={profile} />}
               {activeView === 'projects' && <ProjectList profile={profile} />}
-              {activeView === 'settings' && <Settings />}
+              {activeView === 'settings' && <Settings onNavigate={(view) => setActiveView(view as any)} />}
             {activeView === 'knowledge' && <KnowledgeBase />}
             {activeView === 'assets' && <AssetManagement />}
             {activeView === 'portal' && <CustomerPortal />}
