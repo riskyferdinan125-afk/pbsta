@@ -247,7 +247,7 @@ export interface ProjectJob {
 }
 
 export interface ProjectEvidence {
-  stage: 'Initial' | 'Sebelum' | 'Penggalian' | 'Tanam tiang' | 'Pengecoran' | 'Penarikan kabel' | 'Pemasangan aksesoris' | 'Penyambungan core' | 'Pemasangan UC' | 'Penaikan UC' | 'Sesudah' | 'Berita acara' | 'Tiket Insera' | 'Hasil ukur' | 'As built drawing';
+  stage: 'Initial' | 'Sebelum' | 'Penggalian' | 'Tanam tiang' | 'Pengecoran' | 'Penarikan kabel' | 'Pemasangan aksesoris' | 'Penyambungan core' | 'Pemasangan UC' | 'Penaikan UC' | 'Sesudah' | 'Berita acara' | 'Tiket Insera' | 'Hasil ukur' | 'As built drawing' | 'EVIDEN PRA' | 'PROSES' | 'EVIDEN PASCA' | 'MATERIAL TIBA' | 'ABD' | 'BA PENDUKUNG';
   photoUrl: string;
   caption?: string;
   timestamp: Timestamp;
@@ -266,6 +266,12 @@ export interface Project {
   description: string;
   location?: string;
   status: 'open' | 'in-progress' | 'completed';
+  boqRekon?: string;
+  tiketGamas?: string;
+  baPendukungUrl?: string;
+  evidenPraOptions?: string[];
+  prosesOptions?: string[];
+  evidenPascaOptions?: string[];
   inseraTicketIds?: string[];
   activityCost?: number;
   totalMaterialCost?: number;

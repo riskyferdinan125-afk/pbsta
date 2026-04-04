@@ -58,6 +58,12 @@ interface ProjectListProps {
   profile: UserProfile | null;
 }
 
+const EVIDEN_OPTIONS = [
+  'KABEL', 'UC', 'TIANG', 'ODP', 'ODC', 'PATCHORE', 'OTB', 'PASSIVE',
+  'GROUNDING', 'PIPA', 'HDPE', 'GALIAN', 'AKSESORIS', 'MAINHOLE',
+  'SAMBUNGAN', 'DROPCORE', 'ADAPTOR', 'PEMBONGKARAN'
+];
+
 export default function ProjectList({ profile }: ProjectListProps) {
   const { showToast } = useToast();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -84,6 +90,12 @@ export default function ProjectList({ profile }: ProjectListProps) {
     description: '',
     location: '',
     status: 'open' as Project['status'],
+    boqRekon: '',
+    tiketGamas: '',
+    baPendukungUrl: '',
+    evidenPraOptions: [] as string[],
+    prosesOptions: [] as string[],
+    evidenPascaOptions: [] as string[],
     inseraTicketIds: [] as string[],
     activityCost: 0,
   });
@@ -174,6 +186,11 @@ export default function ProjectList({ profile }: ProjectListProps) {
       ["NO. SURAT PESANAN", ": " + (project.orderNo || "-")],
       ["WITEL", ": " + (project.witel || "-")],
       ["TIKET / LOKASI", ": " + (project.ticketId ? `${project.ticketId} - ${project.location}` : project.location || "-")],
+      ["BOQ REKON", ": " + (project.boqRekon || "-")],
+      ["TIKET GAMAS", ": " + (project.tiketGamas || "-")],
+      ["EVIDEN PRA", ": " + (project.evidenPraOptions?.join(', ') || "-")],
+      ["PROSES", ": " + (project.prosesOptions?.join(', ') || "-")],
+      ["EVIDEN PASCA", ": " + (project.evidenPascaOptions?.join(', ') || "-")],
       ["PELAKSANA", ": " + (project.partner || "-")],
     ];
 
@@ -204,12 +221,16 @@ export default function ProjectList({ profile }: ProjectListProps) {
     // Evidence Section - Organized by requested sequence
     const sections = [
       { title: 'TIKET INSERA', stages: ['Tiket Insera'] },
+      { title: 'EVIDEN PRA', stages: ['EVIDEN PRA'] },
+      { title: 'PROSES', stages: ['PROSES'] },
+      { title: 'EVIDEN PASCA', stages: ['EVIDEN PASCA'] },
+      { title: 'HASIL UKUR', stages: ['Hasil ukur', 'HASIL UKUR'] },
+      { title: 'MATERIAL TIBA', stages: ['MATERIAL TIBA'] },
+      { title: 'ABD', stages: ['As built drawing', 'ABD'] },
+      { title: 'BA PENDUKUNG', stages: ['Berita acara', 'BA PENDUKUNG'] },
       { title: 'SEBELUM', stages: ['Initial', 'Sebelum'] },
       { title: 'PROGRESS', stages: ['Penggalian', 'Tanam tiang', 'Pengecoran', 'Penarikan kabel', 'Pemasangan aksesoris', 'Penyambungan core', 'Pemasangan UC'] },
       { title: 'SESUDAH', stages: ['Penaikan UC', 'Sesudah'] },
-      { title: 'HASIL UKUR', stages: ['Hasil ukur'] },
-      { title: 'BERITA ACARA', stages: ['Berita acara'] },
-      { title: 'AS BUILT DRAWING SMALL WORLD', stages: ['As built drawing'] }
     ];
     
     const projectEvidence = getProjectEvidence(project);
@@ -480,6 +501,11 @@ export default function ProjectList({ profile }: ProjectListProps) {
         ["NO. SURAT PESANAN", ": " + (project.orderNo || "-")],
         ["WITEL", ": " + (project.witel || "MADIUN")],
         ["TIKET / LOKASI", ": " + (project.ticketId ? `${project.ticketId} - ${project.location}` : project.location || "-")],
+        ["BOQ REKON", ": " + (project.boqRekon || "-")],
+        ["TIKET GAMAS", ": " + (project.tiketGamas || "-")],
+        ["EVIDEN PRA", ": " + (project.evidenPraOptions?.join(', ') || "-")],
+        ["PROSES", ": " + (project.prosesOptions?.join(', ') || "-")],
+        ["EVIDEN PASCA", ": " + (project.evidenPascaOptions?.join(', ') || "-")],
         ["PELAKSANA", ": " + (project.partner || "-")]
       ];
 
@@ -518,12 +544,16 @@ export default function ProjectList({ profile }: ProjectListProps) {
       const projectEvidence = getProjectEvidence(project);
       const sections = [
         { title: 'TIKET INSERA', stages: ['Tiket Insera'] },
+        { title: 'EVIDEN PRA', stages: ['EVIDEN PRA'] },
+        { title: 'PROSES', stages: ['PROSES'] },
+        { title: 'EVIDEN PASCA', stages: ['EVIDEN PASCA'] },
+        { title: 'HASIL UKUR', stages: ['Hasil ukur', 'HASIL UKUR'] },
+        { title: 'MATERIAL TIBA', stages: ['MATERIAL TIBA'] },
+        { title: 'ABD', stages: ['As built drawing', 'ABD'] },
+        { title: 'BA PENDUKUNG', stages: ['Berita acara', 'BA PENDUKUNG'] },
         { title: 'SEBELUM', stages: ['Initial', 'Sebelum'] },
         { title: 'PROGRESS', stages: ['Penggalian', 'Tanam tiang', 'Pengecoran', 'Penarikan kabel', 'Pemasangan aksesoris', 'Penyambungan core', 'Pemasangan UC'] },
         { title: 'SESUDAH', stages: ['Penaikan UC', 'Sesudah'] },
-        { title: 'HASIL UKUR', stages: ['Hasil ukur'] },
-        { title: 'BERITA ACARA', stages: ['Berita acara'] },
-        { title: 'AS BUILT DRAWING', stages: ['As built drawing'] }
       ];
 
       const predefinedStages = sections.flatMap(s => s.stages);
@@ -770,6 +800,12 @@ export default function ProjectList({ profile }: ProjectListProps) {
         description: project.description,
         location: project.location || '',
         status: project.status,
+        boqRekon: project.boqRekon || '',
+        tiketGamas: project.tiketGamas || '',
+        baPendukungUrl: project.baPendukungUrl || '',
+        evidenPraOptions: project.evidenPraOptions || [],
+        prosesOptions: project.prosesOptions || [],
+        evidenPascaOptions: project.evidenPascaOptions || [],
         inseraTicketIds: project.inseraTicketIds || [],
         activityCost: project.activityCost || 0,
       });
@@ -788,6 +824,12 @@ export default function ProjectList({ profile }: ProjectListProps) {
         description: '',
         location: '',
         status: 'open',
+        boqRekon: '',
+        tiketGamas: '',
+        baPendukungUrl: '',
+        evidenPraOptions: [],
+        prosesOptions: [],
+        evidenPascaOptions: [],
         inseraTicketIds: [],
         activityCost: 0,
       });
@@ -1326,6 +1368,68 @@ export default function ProjectList({ profile }: ProjectListProps) {
                     </div>
                   </div>
                 </div>
+
+                {/* Project Details Section */}
+                {(project.boqRekon || project.tiketGamas || project.evidenPraOptions?.length || project.prosesOptions?.length || project.evidenPascaOptions?.length) && (
+                  <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4 bg-neutral-50/50 p-4 rounded-2xl border border-black/5">
+                    {project.boqRekon && (
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-neutral-400 uppercase">BOQ REKON</p>
+                        <p className="text-sm font-medium text-neutral-900">{project.boqRekon}</p>
+                      </div>
+                    )}
+                    {project.tiketGamas && (
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-neutral-400 uppercase">TIKET GAMAS</p>
+                        <p className="text-sm font-medium text-neutral-900">{project.tiketGamas}</p>
+                      </div>
+                    )}
+                    {project.evidenPraOptions && project.evidenPraOptions.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-neutral-400 uppercase">EVIDEN PRA</p>
+                        <div className="flex flex-wrap gap-1">
+                          {project.evidenPraOptions.map(opt => (
+                            <span key={opt} className="text-[9px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded uppercase">{opt}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {project.prosesOptions && project.prosesOptions.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-neutral-400 uppercase">PROSES</p>
+                        <div className="flex flex-wrap gap-1">
+                          {project.prosesOptions.map(opt => (
+                            <span key={opt} className="text-[9px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded uppercase">{opt}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {project.evidenPascaOptions && project.evidenPascaOptions.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-neutral-400 uppercase">EVIDEN PASCA</p>
+                        <div className="flex flex-wrap gap-1">
+                          {project.evidenPascaOptions.map(opt => (
+                            <span key={opt} className="text-[9px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded uppercase">{opt}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {project.baPendukungUrl && (
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-neutral-400 uppercase">BA PENDUKUNG</p>
+                        <a 
+                          href={resolvePhotoUrl(project.baPendukungUrl)} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-[10px] font-bold text-indigo-600 hover:underline flex items-center gap-1"
+                        >
+                          <FileText className="w-3 h-3" />
+                          VIEW PDF
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="mt-6 pt-4 border-t border-black/5 flex flex-wrap items-center justify-between gap-4">
                   <div className="flex flex-wrap items-center gap-2">
@@ -1949,6 +2053,154 @@ export default function ProjectList({ profile }: ProjectListProps) {
                         placeholder="e.g. Area Jakarta Selatan"
                       />
                     </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-neutral-500 uppercase mb-1">BOQ REKON</label>
+                        <input
+                          type="text"
+                          value={formData.boqRekon}
+                          onChange={(e) => setFormData({ ...formData, boqRekon: e.target.value })}
+                          className="w-full px-4 py-2 bg-neutral-50 border border-black/5 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                          placeholder="BOQ Rekon"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-neutral-500 uppercase mb-1">TIKET GAMAS</label>
+                        <input
+                          type="text"
+                          value={formData.tiketGamas}
+                          onChange={(e) => setFormData({ ...formData, tiketGamas: e.target.value })}
+                          className="w-full px-4 py-2 bg-neutral-50 border border-black/5 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                          placeholder="Tiket Gamas"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Multi-select Options */}
+                    <div className="space-y-4 p-4 bg-neutral-50 rounded-2xl border border-black/5">
+                      <div>
+                        <label className="block text-xs font-bold text-neutral-500 uppercase mb-2">EVIDEN PRA</label>
+                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                          {EVIDEN_OPTIONS.map(opt => (
+                            <label key={opt} className="flex items-center gap-1.5 cursor-pointer group">
+                              <input 
+                                type="checkbox"
+                                checked={formData.evidenPraOptions.includes(opt)}
+                                onChange={(e) => {
+                                  const newOpts = e.target.checked 
+                                    ? [...formData.evidenPraOptions, opt]
+                                    : formData.evidenPraOptions.filter(o => o !== opt);
+                                  setFormData({ ...formData, evidenPraOptions: newOpts });
+                                }}
+                                className="w-3.5 h-3.5 rounded border-neutral-300 text-emerald-600 focus:ring-emerald-500/20"
+                              />
+                              <span className="text-[9px] font-bold text-neutral-600 group-hover:text-neutral-900 transition-colors uppercase">{opt}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs font-bold text-neutral-500 uppercase mb-2">PROSES</label>
+                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                          {EVIDEN_OPTIONS.map(opt => (
+                            <label key={opt} className="flex items-center gap-1.5 cursor-pointer group">
+                              <input 
+                                type="checkbox"
+                                checked={formData.prosesOptions.includes(opt)}
+                                onChange={(e) => {
+                                  const newOpts = e.target.checked 
+                                    ? [...formData.prosesOptions, opt]
+                                    : formData.prosesOptions.filter(o => o !== opt);
+                                  setFormData({ ...formData, prosesOptions: newOpts });
+                                }}
+                                className="w-3.5 h-3.5 rounded border-neutral-300 text-blue-600 focus:ring-blue-500/20"
+                              />
+                              <span className="text-[9px] font-bold text-neutral-600 group-hover:text-neutral-900 transition-colors uppercase">{opt}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-neutral-500 uppercase mb-2">EVIDEN PASCA</label>
+                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                          {EVIDEN_OPTIONS.map(opt => (
+                            <label key={opt} className="flex items-center gap-1.5 cursor-pointer group">
+                              <input 
+                                type="checkbox"
+                                checked={formData.evidenPascaOptions.includes(opt)}
+                                onChange={(e) => {
+                                  const newOpts = e.target.checked 
+                                    ? [...formData.evidenPascaOptions, opt]
+                                    : formData.evidenPascaOptions.filter(o => o !== opt);
+                                  setFormData({ ...formData, evidenPascaOptions: newOpts });
+                                }}
+                                className="w-3.5 h-3.5 rounded border-neutral-300 text-amber-600 focus:ring-amber-500/20"
+                              />
+                              <span className="text-[9px] font-bold text-neutral-600 group-hover:text-neutral-900 transition-colors uppercase">{opt}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-500 uppercase mb-1">BA PENDUKUNG (PDF URL)</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={formData.baPendukungUrl}
+                          onChange={(e) => setFormData({ ...formData, baPendukungUrl: e.target.value })}
+                          className="flex-1 px-4 py-2 bg-neutral-50 border border-black/5 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                          placeholder="URL to PDF"
+                        />
+                        <div className="relative">
+                          <input
+                            type="file"
+                            accept=".pdf"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                try {
+                                  setIsUploading(true);
+                                  const storageRef = ref(storage, `projects/ba_pendukung/${formData.pid}_${Date.now()}_${file.name}`);
+                                  const uploadTask = uploadBytesResumable(storageRef, file);
+                                  
+                                  uploadTask.on('state_changed', 
+                                    (snapshot) => {
+                                      const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                                      setUploadProgress(progress);
+                                    },
+                                    (error) => {
+                                      console.error("PDF Upload error:", error);
+                                      showToast("Failed to upload PDF", "error");
+                                      setIsUploading(false);
+                                    },
+                                    async () => {
+                                      const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+                                      setFormData({ ...formData, baPendukungUrl: downloadURL });
+                                      setIsUploading(false);
+                                      showToast("PDF uploaded successfully", "success");
+                                    }
+                                  );
+                                } catch (err) {
+                                  console.error("PDF Upload error:", err);
+                                  setIsUploading(false);
+                                }
+                              }
+                            }}
+                            className="absolute inset-0 opacity-0 cursor-pointer"
+                          />
+                          <button
+                            type="button"
+                            className="px-4 py-2 bg-neutral-100 text-neutral-600 rounded-xl hover:bg-neutral-200 transition-all text-xs font-bold flex items-center gap-2"
+                          >
+                            <Upload className="w-4 h-4" />
+                            UPLOAD
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                     <div>
                       <label className="block text-xs font-bold text-neutral-500 uppercase mb-1">Tiket Insera</label>
                       <div className="flex flex-wrap gap-2 mb-2">
@@ -2037,6 +2289,13 @@ export default function ProjectList({ profile }: ProjectListProps) {
                             className="w-full px-3 py-2 bg-white border border-black/5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                           >
                             <option value="Initial">Kondisi Awal</option>
+                            <option value="EVIDEN PRA">EVIDEN PRA</option>
+                            <option value="PROSES">PROSES</option>
+                            <option value="EVIDEN PASCA">EVIDEN PASCA</option>
+                            <option value="HASIL UKUR">Hasil Ukur</option>
+                            <option value="MATERIAL TIBA">Material Tiba</option>
+                            <option value="ABD">ABD</option>
+                            <option value="BA PENDUKUNG">BA Pendukung</option>
                             <option value="Penggalian">Penggalian</option>
                             <option value="Tanam tiang">Tanam tiang</option>
                             <option value="Pengecoran">Pengecoran</option>

@@ -23,6 +23,13 @@ const SYSTEM_COMMANDS = [
   { command: 'progres', description: 'Update progres lapangan (dengan foto)', response: '📑 *Format Update Progres Lapangan* 📑\n\nSilakan kirim *FOTO EVIDEN* dengan caption format di bawah ini:\n\n`/progres`\nCustomer ID:\nNo Tiket :\nPenyebab GGN:\nPerbaikan GGN:\nLetak Perbaikan:\nMaterial:\nTeknisi (NIK):\nNohp Pelanggan:', isActive: true, isSystem: true },
   { command: 'assign', description: 'Assign tiket ke teknisi', response: '📋 *Format Assign Tiket* 📋\n\nSilakan salin dan isi format di bawah ini:\n\n`/assign`\nCustomer ID : \nNIK : ', isActive: true, isSystem: true },
   { command: 'projects', description: 'List proyek aktif untuk update progres', response: '🏗️ *Daftar Proyek Aktif*\n\nSilakan pilih proyek untuk update progres:', isActive: true, isSystem: true },
+  { 
+    command: 'addprojects', 
+    description: 'Tambah proyek baru (Flow Interaktif)', 
+    response: '🏗️ *Tambah Proyek Baru* 🏗️\n\nBot akan memandu Anda langkah demi langkah:\n1. BOQ REKON\n2. TIKET GAMAS\n3. EVIDEN PRA (Multi-select)\n4. PROSES (Multi-select)\n5. EVIDEN PASCA (Multi-select)\n6. HASIL UKUR (Foto)\n7. MATERIAL TIBA (Foto)\n8. ABD (Foto)\n9. BA PENDUKUNG (Dokumen PDF)\n\nKetik `/addprojects` untuk memulai.', 
+    isActive: true, 
+    isSystem: true 
+  },
 ];
 
 export default function TelegramSettings() {

@@ -63,12 +63,16 @@ export default function ProjectReport({ project, onClose }: ProjectReportProps) 
 
   const sections = [
     { title: 'TIKET INSERA', stages: ['Tiket Insera'] },
+    { title: 'EVIDEN PRA', stages: ['EVIDEN PRA'] },
+    { title: 'PROSES', stages: ['PROSES'] },
+    { title: 'EVIDEN PASCA', stages: ['EVIDEN PASCA'] },
+    { title: 'HASIL UKUR', stages: ['Hasil ukur', 'HASIL UKUR'] },
+    { title: 'MATERIAL TIBA', stages: ['MATERIAL TIBA'] },
+    { title: 'ABD', stages: ['As built drawing', 'ABD'] },
+    { title: 'BA PENDUKUNG', stages: ['Berita acara', 'BA PENDUKUNG'] },
     { title: 'SEBELUM', stages: ['Initial', 'Sebelum'] },
     { title: 'PROGRESS', stages: ['Penggalian', 'Tanam tiang', 'Pengecoran', 'Penarikan kabel', 'Pemasangan aksesoris', 'Penyambungan core', 'Pemasangan UC'] },
     { title: 'SESUDAH', stages: ['Penaikan UC', 'Sesudah'] },
-    { title: 'HASIL UKUR', stages: ['Hasil ukur'] },
-    { title: 'BERITA ACARA', stages: ['Berita acara'] },
-    { title: 'AS BUILT DRAWING', stages: ['As built drawing'] }
   ];
 
   const predefinedStages = sections.flatMap(s => s.stages);
@@ -135,6 +139,12 @@ export default function ProjectReport({ project, onClose }: ProjectReportProps) 
             
             <div className="font-bold uppercase">TIKET / LOKASI</div>
             <div>: {project.ticketId ? `${project.ticketId} - ${project.location}` : project.location || "-"}</div>
+            
+            <div className="font-bold uppercase">BOQ REKON</div>
+            <div>: {project.boqRekon || '-'}</div>
+            
+            <div className="font-bold uppercase">TIKET GAMAS</div>
+            <div>: {project.tiketGamas || '-'}</div>
             
             <div className="font-bold uppercase">PELAKSANA</div>
             <div>: {project.partner || "-"}</div>
