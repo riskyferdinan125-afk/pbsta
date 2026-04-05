@@ -51,6 +51,7 @@ import NewTicketModal from './NewTicketModal';
 import BulkUpdateModal from './BulkUpdateModal';
 import AssignmentModal from './AssignmentModal';
 import ConfirmationModal from './ConfirmationModal';
+import { getTechnicianSuggestions } from '../lib/assignmentUtils';
 
 import { useToast } from './Toast';
 
@@ -159,6 +160,16 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
     }
   }, [isModalOpen]);
 
+  useEffect(() => {
+    if (tickets.length > 0) {
+      const targetTicket = tickets.find(t => t.ticketNumber === 87324);
+      if (targetTicket) {
+        setSelectedTicketId(targetTicket.id);
+        setIsRepairModalOpen(true);
+      }
+    }
+  }, [tickets]);
+
   const { showToast } = useToast();
   
   useEffect(() => {
@@ -233,10 +244,23 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
 
       const points = calculateTicketPoints(newTicket.category, newTicket.subCategory);
 
+      // Calculate SLA Deadline based on priority
+      const slaHours = {
+        urgent: 4,
+        high: 8,
+        medium: 24,
+        low: 48
+      }[newTicket.priority] || 24;
+      
+      const slaDeadline = new Date();
+      slaDeadline.setHours(slaDeadline.getHours() + slaHours);
+
       const ticketRef = await addDoc(collection(db, 'tickets'), {
         ...newTicket,
         ticketNumber,
         points,
+        slaDeadline: Timestamp.fromDate(slaDeadline),
+        slaStatus: 'within-sla',
         dueDate: newTicket.dueDate ? Timestamp.fromDate(new Date(newTicket.dueDate)) : null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
@@ -294,32 +318,34 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
 
   const handleSmartAssign = async (ticketId: string) => {
     try {
-      // 1. Get available technicians
-      const availableTechs = technicians.filter(t => t.availabilityStatus === 'Available');
+      const ticket = tickets.find(t => t.id === ticketId);
+      if (!ticket) return;
+
+      // Use the smart ranking utility
+      const suggestions = getTechnicianSuggestions(ticket, technicians, tickets);
       
-      if (availableTechs.length === 0) {
-        showToast('No available technicians found', 'error');
+      // Filter for available technicians first
+      const availableSuggestions = suggestions.filter(s => s.technician.availabilityStatus === 'Available');
+      
+      if (availableSuggestions.length === 0) {
+        showToast('No available technicians found for smart assignment', 'error');
         return;
       }
 
-      // 2. Calculate workload (active tickets) for each available technician
-      const techWorkloads = availableTechs.map(tech => {
-        const activeTicketsCount = tickets.filter(t => 
-          t.technicianIds?.includes(tech.id) && 
-          (t.status === 'open' || t.status === 'in-progress')
-        ).length;
-        return { tech, count: activeTicketsCount };
-      });
+      // Pick the top match
+      const bestMatch = availableSuggestions[0];
 
-      // 3. Sort by workload (ascending)
-      techWorkloads.sort((a, b) => a.count - b.count);
+      // Assign
+      await updateTechnician(ticketId, bestMatch.technician.id);
+      
+      const skillReason = bestMatch.reasons.find(r => r.includes('Skill Match') || r.includes('Specialization Match'));
+      const workloadReason = bestMatch.reasons.find(r => r.includes('Workload'));
+      
+      let reasonText = '';
+      if (skillReason) reasonText = ` (${skillReason})`;
+      else if (workloadReason) reasonText = ` (${workloadReason})`;
 
-      // 4. Pick the best one
-      const bestTech = techWorkloads[0].tech;
-
-      // 5. Assign
-      await updateTechnician(ticketId, bestTech.id);
-      showToast(`Smart Assigned to ${bestTech.name} (Workload: ${techWorkloads[0].count} active tickets)`);
+      showToast(`Smart Assigned to ${bestMatch.technician.name}${reasonText}`, 'success');
     } catch (error) {
       console.error('Smart assignment error:', error);
       showToast('Smart assignment failed', 'error');
@@ -566,6 +592,7 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
         priority: 'high',
         category: 'REGULER',
         subCategory: 'REGULER',
+        points: calculateTicketPoints('REGULER', 'REGULER'),
         status: 'resolved',
         technicianIds: [demoTechId],
         ticketNumber,
@@ -780,19 +807,19 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
   )) as string[];
 
   const getSLAStatus = (ticket: Ticket) => {
-    if (ticket.status === 'resolved' || ticket.status === 'closed') return 'met';
-    if (!ticket.dueDate) return 'met';
+    if (ticket.status === 'resolved' || ticket.status === 'closed') return 'within-sla';
+    if (!ticket.slaDeadline) return 'within-sla';
 
     const now = new Date();
-    const due = ticket.dueDate instanceof Timestamp ? ticket.dueDate.toDate() : new Date(ticket.dueDate);
+    const deadline = ticket.slaDeadline instanceof Timestamp ? ticket.slaDeadline.toDate() : new Date(ticket.slaDeadline);
     
-    if (now > due) return 'breached';
+    if (now > deadline) return 'breached';
     
-    // Warning if less than 2 hours remaining
-    const diff = due.getTime() - now.getTime();
-    if (diff < 2 * 60 * 60 * 1000) return 'warning';
+    // Near breach if less than 1 hour remaining
+    const diff = deadline.getTime() - now.getTime();
+    if (diff < 1 * 60 * 60 * 1000) return 'near-breach';
     
-    return 'met';
+    return 'within-sla';
   };
 
   const filteredTickets = tickets.filter(t => {
@@ -836,15 +863,33 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
     <div className="space-y-6">
       <DashboardSummary tickets={tickets} />
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
-          <input
-            type="text"
-            placeholder="Search tickets or customers..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-white border border-black/5 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all"
-          />
+        <div className="flex items-center gap-2 flex-1 max-w-md">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+            <input
+              type="text"
+              placeholder="Search tickets or customers..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-white border border-black/5 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all"
+            />
+          </div>
+          {/^\d+$/.test(searchQuery) && (
+            <button
+              onClick={() => {
+                const target = tickets.find(t => t.ticketNumber === parseInt(searchQuery));
+                if (target) {
+                  setSelectedTicketId(target.id);
+                  setIsRepairModalOpen(true);
+                } else {
+                  showToast(`Ticket #${searchQuery} not found`, 'error');
+                }
+              }}
+              className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold text-xs hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20 whitespace-nowrap"
+            >
+              Open Repair
+            </button>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <AnimatePresence>
@@ -1042,86 +1087,6 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
         handleBulkUpdate={handleBulkUpdate}
         selectedCount={selectedTicketIds.length}
       />
-
-      {/* Assignment Modal */}
-      <AnimatePresence>
-        {isAssignModalOpen && selectedTicket && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]"
-            >
-              <div className="p-6 border-b border-black/5 flex items-center justify-between bg-neutral-50">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600">
-                    <UserPlus className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-neutral-900">Assign Technician</h3>
-                    <p className="text-xs text-neutral-500">Ticket #{selectedTicket.ticketNumber} • {selectedTicket.customerName}</p>
-                  </div>
-                </div>
-                <button onClick={() => setIsAssignModalOpen(false)} className="p-2 hover:bg-neutral-200 rounded-xl transition-colors">
-                  <X className="w-5 h-5 text-neutral-500" />
-                </button>
-              </div>
-
-              <div className="p-6 overflow-y-auto">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {technicians.map(tech => {
-                    const isAssigned = selectedTicket.technicianIds?.includes(tech.id);
-                    return (
-                      <button
-                        key={tech.id}
-                        onClick={() => updateTechnician(selectedTicket.id, tech.id)}
-                        className={`flex items-center gap-4 p-4 rounded-2xl border transition-all text-left ${
-                          isAssigned 
-                            ? 'bg-emerald-50 border-emerald-200 shadow-sm' 
-                            : 'bg-white border-black/5 hover:border-emerald-500/30 hover:shadow-md group'
-                        }`}
-                      >
-                        <div className="relative">
-                          <div className="w-12 h-12 bg-neutral-100 rounded-full flex items-center justify-center text-neutral-400 border border-black/5 overflow-hidden">
-                            {tech.photoURL ? (
-                              <img src={resolvePhotoUrl(tech.photoURL)} alt={tech.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                            ) : (
-                              <User className="w-6 h-6" />
-                            )}
-                          </div>
-                          <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white ${
-                            tech.availabilityStatus === 'Available' ? 'bg-emerald-500' :
-                            tech.availabilityStatus === 'Busy' ? 'bg-yellow-400' : 'bg-red-500'
-                          }`} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-bold text-neutral-900 truncate">{tech.name}</h4>
-                          <p className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider">{tech.availabilityStatus || 'Available'}</p>
-                        </div>
-                        {isAssigned ? (
-                          <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                        ) : (
-                          <ArrowRight className="w-5 h-5 text-neutral-300 group-hover:text-emerald-500 group-hover:translate-x-1 transition-all" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="p-6 border-t border-black/5 bg-neutral-50 flex justify-end">
-                <button
-                  onClick={() => setIsAssignModalOpen(false)}
-                  className="px-6 py-2 text-sm font-bold text-neutral-500 hover:text-neutral-700 transition-colors"
-                >
-                  Close
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       {/* Dependency Manager Modal */}
       <AnimatePresence>

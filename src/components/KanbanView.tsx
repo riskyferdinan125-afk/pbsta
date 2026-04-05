@@ -2,13 +2,18 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Ticket, TicketStatus, TicketPriority } from '../types';
 import { 
+  CheckCircle2,
+  AlertCircle,
+  X,
   Plus, 
   MoreVertical, 
   User, 
   Clock, 
   Link as LinkIcon,
   Zap,
-  Timer
+  Timer,
+  AlertTriangle,
+  TrendingUp
 } from 'lucide-react';
 import { Timestamp } from 'firebase/firestore';
 
@@ -20,7 +25,7 @@ interface KanbanViewProps {
   setIsDetailsModalOpen: (isOpen: boolean) => void;
   handleSmartAssign: (ticketId: string) => void;
   getPriorityColor: (priority: TicketPriority) => string;
-  getSLAStatus: (ticket: Ticket) => 'met' | 'breached' | 'warning' | 'healthy';
+  getSLAStatus: (ticket: Ticket) => 'within-sla' | 'near-breach' | 'breached';
 }
 
 export default function KanbanView({
@@ -33,11 +38,11 @@ export default function KanbanView({
   getPriorityColor,
   getSLAStatus
 }: KanbanViewProps) {
-  const columns: { id: TicketStatus; title: string; color: string }[] = [
-    { id: 'open', title: 'Open', color: 'bg-sky-500' },
-    { id: 'in-progress', title: 'In Progress', color: 'bg-amber-500' },
-    { id: 'resolved', title: 'Resolved', color: 'bg-emerald-500' },
-    { id: 'closed', title: 'Closed', color: 'bg-slate-500' }
+  const columns: { id: TicketStatus; title: string; color: string; icon: React.ReactNode }[] = [
+    { id: 'open', title: 'Open', color: 'bg-sky-500', icon: <AlertCircle className="w-3 h-3" /> },
+    { id: 'in-progress', title: 'In Progress', color: 'bg-amber-500', icon: <Clock className="w-3 h-3" /> },
+    { id: 'resolved', title: 'Resolved', color: 'bg-emerald-500', icon: <CheckCircle2 className="w-3 h-3" /> },
+    { id: 'closed', title: 'Closed', color: 'bg-slate-500', icon: <X className="w-3 h-3" /> }
   ];
 
   return (
@@ -46,8 +51,10 @@ export default function KanbanView({
         <div key={column.id} className="flex-shrink-0 w-80 flex flex-col gap-4">
           <div className="flex items-center justify-between px-2">
             <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${column.color}`} />
-              <h3 className="font-bold text-slate-700 uppercase tracking-wider text-xs">{column.title}</h3>
+              <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-white ${column.color}`}>
+                {column.icon}
+              </div>
+              <h3 className="font-bold text-slate-700 uppercase tracking-wider text-[10px]">{column.title}</h3>
               <span className="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-full">
                 {filteredTickets.filter(t => t.status === column.id).length}
               </span>
@@ -97,9 +104,24 @@ export default function KanbanView({
                       )}
                     </div>
                     <div className="flex items-center gap-1">
-                      {ticket.dependsOn && ticket.dependsOn.length > 0 && (
-                        <LinkIcon size={12} className="text-amber-500" />
-                      )}
+                      {(() => {
+                        const isBlocked = ticket.dependsOn?.some(depId => {
+                          const dep = filteredTickets.find(t => t.id === depId);
+                          return dep && dep.status !== 'resolved' && dep.status !== 'closed';
+                        });
+                        if (isBlocked) {
+                          return (
+                            <div className="flex items-center gap-1 text-[8px] font-black text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100 w-fit">
+                              <AlertTriangle className="w-2.5 h-2.5" />
+                              BLOCKED
+                            </div>
+                          );
+                        }
+                        if (ticket.dependsOn && ticket.dependsOn.length > 0) {
+                          return <LinkIcon size={12} className="text-amber-500" />;
+                        }
+                        return null;
+                      })()}
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
@@ -117,6 +139,12 @@ export default function KanbanView({
                   </div>
 
                   <h4 className="text-sm font-semibold text-slate-800 mb-1 line-clamp-1">{ticket.category} - {ticket.subCategory || 'General'}</h4>
+                  {ticket.points !== undefined && (
+                    <div className="flex items-center gap-1 mb-2">
+                      <TrendingUp className="w-2.5 h-2.5 text-emerald-500" />
+                      <span className="text-[9px] font-black text-emerald-600 uppercase tracking-tighter">{ticket.points} PTS</span>
+                    </div>
+                  )}
                   <p className="text-xs text-slate-500 line-clamp-2 mb-4 leading-relaxed">{ticket.description}</p>
 
                   <div className="flex items-center justify-between pt-3 border-t border-slate-50">
@@ -129,22 +157,22 @@ export default function KanbanView({
                     
                     {(() => {
                       const sla = getSLAStatus(ticket);
-                      const due = ticket.dueDate instanceof Timestamp ? ticket.dueDate.toDate() : (ticket.dueDate ? new Date(ticket.dueDate) : null);
-                      if (!due) return null;
+                      const deadline = ticket.slaDeadline instanceof Timestamp ? ticket.slaDeadline.toDate() : (ticket.slaDeadline ? new Date(ticket.slaDeadline) : null);
+                      if (!deadline) return null;
                       
                       const now = new Date();
-                      const diff = due.getTime() - now.getTime();
-                      const hours = Math.floor(diff / (1000 * 60 * 60));
-                      const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                      const diff = deadline.getTime() - now.getTime();
+                      const hours = Math.floor(Math.abs(diff) / (1000 * 60 * 60));
+                      const mins = Math.floor((Math.abs(diff) % (1000 * 60 * 60)) / (1000 * 60));
 
                       return (
                         <div className={`flex items-center gap-1 text-[10px] font-bold ${
                           sla === 'breached' ? 'text-rose-500' :
-                          sla === 'warning' ? 'text-amber-500 animate-pulse' :
+                          sla === 'near-breach' ? 'text-amber-500 animate-pulse' :
                           'text-emerald-500'
                         }`}>
                           <Clock size={10} />
-                          {sla === 'breached' ? 'Breached' : `${hours}h ${mins}m`}
+                          {sla === 'breached' ? `Breached ${hours}h ${mins}m ago` : `${hours}h ${mins}m left`}
                         </div>
                       );
                     })()}

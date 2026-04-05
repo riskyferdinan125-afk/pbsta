@@ -371,6 +371,7 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
       const recordData = {
         ticketId,
         technicianId: formData.technicianId,
+        technicianName: technicians.find(t => t.id === formData.technicianId)?.name || 'Unknown',
         startTime: Timestamp.fromDate(new Date(formData.startTime)),
         endTime: formData.endTime ? Timestamp.fromDate(new Date(formData.endTime)) : null,
         type: formData.type,
@@ -609,53 +610,69 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
                 exit={{ opacity: 0, x: -20 }}
                 className="space-y-6"
               >
-                {formData.type === 'Physical' && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <label className="text-sm font-bold text-neutral-700 flex items-center gap-2">
-                        <Package className="w-4 h-4" /> Materials Used
-                      </label>
-                    </div>
-                    <div className="flex flex-wrap gap-3">
-                      <div className="flex-1 min-w-[200px]">
-                        <select
-                          value={selectedMaterialId}
-                          onChange={(e) => setSelectedMaterialId(e.target.value)}
-                          className="w-full px-4 py-2 bg-white border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
-                        >
-                          <option value="">Select material</option>
-                          {materials.map(m => (
-                            <option key={m.id} value={m.id}>{m.name} (Stok: {m.quantity} {m.unit})</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="w-24">
-                        <input
-                          type="number"
-                          min="1"
-                          value={materialQuantity}
-                          onChange={(e) => setMaterialQuantity(parseInt(e.target.value))}
-                          className="w-full px-4 py-2 bg-white border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
-                          placeholder="Qty"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleAddMaterial}
-                        disabled={!selectedMaterialId}
-                        className="px-4 bg-neutral-900 text-white rounded-xl font-medium hover:bg-neutral-800 disabled:opacity-50 transition-all"
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-bold text-neutral-700 flex items-center gap-2">
+                      <Package className="w-4 h-4" /> Materials Used
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <div className="flex-1 min-w-[200px]">
+                      <select
+                        value={selectedMaterialId}
+                        onChange={(e) => setSelectedMaterialId(e.target.value)}
+                        className="w-full px-4 py-2 bg-white border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
                       >
-                        <Plus className="w-5 h-5" />
-                      </button>
+                        <option value="">Select material</option>
+                        {materials.map(m => (
+                          <option key={m.id} value={m.id}>{m.name} (Stok: {m.quantity} {m.unit}) - Rp {m.price.toLocaleString()}</option>
+                        ))}
+                      </select>
                     </div>
+                    <div className="w-24">
+                      <input
+                        type="number"
+                        min="1"
+                        value={materialQuantity}
+                        onChange={(e) => setMaterialQuantity(parseInt(e.target.value))}
+                        className="w-full px-4 py-2 bg-white border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                        placeholder="Qty"
+                      />
+                    </div>
+                    <div className="w-32">
+                      <input
+                        type="number"
+                        value={materialPrice}
+                        onChange={(e) => setMaterialPrice(parseFloat(e.target.value))}
+                        className="w-full px-4 py-2 bg-white border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                        placeholder="Price"
+                      />
+                    </div>
+                    {selectedMaterialId && (
+                      <div className="flex items-center px-4 py-2 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-100 text-xs font-bold">
+                        Subtotal: Rp {(materialQuantity * materialPrice).toLocaleString()}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleAddMaterial}
+                      disabled={!selectedMaterialId}
+                      className="px-4 bg-neutral-900 text-white rounded-xl font-medium hover:bg-neutral-800 disabled:opacity-50 transition-all"
+                    >
+                      <Plus className="w-5 h-5" />
+                    </button>
+                  </div>
 
-                    <div className="bg-neutral-50 rounded-2xl border border-black/5 divide-y divide-black/5 overflow-hidden">
-                      {formData.materialsUsed.length > 0 ? (
-                        formData.materialsUsed.map((m) => (
+                  <div className="bg-neutral-50 rounded-2xl border border-black/5 divide-y divide-black/5 overflow-hidden">
+                    {formData.materialsUsed.length > 0 ? (
+                      <>
+                        {formData.materialsUsed.map((m) => (
                           <div key={m.materialId} className="p-4 flex items-center justify-between bg-white">
                             <div>
                               <p className="text-sm font-bold text-neutral-900">{m.name}</p>
-                              <p className="text-[10px] font-black uppercase text-neutral-400">Quantity: {m.quantity}</p>
+                              <p className="text-[10px] font-black uppercase text-neutral-400">
+                                {m.quantity} x Rp {m.unitPrice.toLocaleString()} = <span className="text-emerald-600">Rp {(m.quantity * m.unitPrice).toLocaleString()}</span>
+                              </p>
                             </div>
                             <button
                               type="button"
@@ -665,18 +682,22 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
-                        ))
-                      ) : (
-                        <div className="p-12 text-center text-neutral-400">
-                          <Package className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                          <p className="text-sm italic">No materials added yet.</p>
+                        ))}
+                        <div className="p-4 bg-neutral-50 flex justify-between items-center">
+                          <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Total Material Cost</span>
+                          <span className="text-sm font-black text-neutral-900">Rp {totalMaterialsCost.toLocaleString()}</span>
                         </div>
-                      )}
-                    </div>
+                      </>
+                    ) : (
+                      <div className="p-12 text-center text-neutral-400">
+                        <Package className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                        <p className="text-sm italic">No materials added yet.</p>
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
 
-                <div className={`space-y-4 ${formData.type === 'Physical' ? 'pt-4 border-t border-black/5' : ''}`}>
+                <div className="space-y-4 pt-4 border-t border-black/5">
                   <div className="flex items-center justify-between">
                     <label className="text-sm font-bold text-neutral-700 flex items-center gap-2">
                       <Briefcase className="w-4 h-4" /> Jobs Performed
@@ -695,6 +716,30 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
                         ))}
                       </select>
                     </div>
+                    <div className="w-24">
+                      <input
+                        type="number"
+                        min="1"
+                        value={jobQuantity}
+                        onChange={(e) => setJobQuantity(parseInt(e.target.value))}
+                        className="w-full px-4 py-2 bg-white border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                        placeholder="Qty"
+                      />
+                    </div>
+                    <div className="w-32">
+                      <input
+                        type="number"
+                        value={jobPrice}
+                        onChange={(e) => setJobPrice(parseFloat(e.target.value))}
+                        className="w-full px-4 py-2 bg-white border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                        placeholder="Price"
+                      />
+                    </div>
+                    {selectedJobId && (
+                      <div className="flex items-center px-4 py-2 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-100 text-xs font-bold">
+                        Subtotal: Rp {(jobQuantity * jobPrice).toLocaleString()}
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={handleAddJob}
@@ -707,21 +752,33 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
 
                   <div className="bg-neutral-50 rounded-2xl border border-black/5 divide-y divide-black/5 overflow-hidden">
                     {formData.jobsUsed.length > 0 ? (
-                      formData.jobsUsed.map((j) => (
-                        <div key={j.jobId} className="p-4 flex items-center justify-between bg-white">
-                          <div>
-                            <p className="text-sm font-bold text-neutral-900">{j.name}</p>
-                            <p className="text-[10px] font-black uppercase text-neutral-400">Price: Rp {j.unitPrice.toLocaleString()}</p>
+                      <>
+                        {formData.jobsUsed.map((j) => (
+                          <div key={j.jobId} className="p-4 flex items-center justify-between bg-white">
+                            <div>
+                              <p className="text-sm font-bold text-neutral-900">{j.name}</p>
+                              <p className="text-[10px] font-black uppercase text-neutral-400">
+                                {j.quantity} x Rp {j.unitPrice.toLocaleString()} = <span className="text-emerald-600">Rp {(j.quantity * j.unitPrice).toLocaleString()}</span>
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveJob(j.jobId)}
+                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveJob(j.jobId)}
-                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                        ))}
+                        <div className="p-4 bg-neutral-50 flex justify-between items-center">
+                          <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Total Service Cost</span>
+                          <span className="text-sm font-black text-neutral-900">Rp {totalJobsCost.toLocaleString()}</span>
                         </div>
-                      ))
+                        <div className="p-4 bg-emerald-50 flex justify-between items-center border-t border-emerald-100">
+                          <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Grand Total Cost</span>
+                          <span className="text-base font-black text-emerald-700">Rp {totalCost.toLocaleString()}</span>
+                        </div>
+                      </>
                     ) : (
                       <div className="p-12 text-center text-neutral-400">
                         <Briefcase className="w-12 h-12 mx-auto mb-4 opacity-20" />
@@ -905,7 +962,7 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
             </button>
           )}
           
-          {currentStep < 4 ? (
+          {currentStep < (formData.type === 'Physical' ? 4 : 3) ? (
             <button
               type="button"
               disabled={(currentStep === 0 && !formData.customerId) || (currentStep === 1 && !formData.type)}
@@ -917,7 +974,7 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
           ) : (
             <button
               onClick={handleSubmit}
-              disabled={isUploading || (!formData.evidencePhoto && !formData.afterPhoto)}
+              disabled={isUploading || (formData.type === 'Physical' && !formData.evidencePhoto && !formData.afterPhoto)}
               className="flex-[2] py-4 px-6 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 disabled:opacity-50 transition-all shadow-xl shadow-emerald-600/20 flex items-center justify-center gap-2"
             >
               {isUploading ? (

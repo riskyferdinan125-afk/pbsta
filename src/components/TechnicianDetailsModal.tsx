@@ -100,6 +100,11 @@ export default function TechnicianDetailsModal({ isOpen, onClose, technician }: 
                   <p className="text-emerald-600 font-semibold flex items-center gap-2">
                     <Briefcase className="w-4 h-4" />
                     {technician.role || 'General Technician'}
+                    {technician.specialization && (
+                      <span className="ml-2 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase rounded-md border border-emerald-200">
+                        {technician.specialization}
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>
@@ -138,6 +143,50 @@ export default function TechnicianDetailsModal({ isOpen, onClose, technician }: 
                           <div>
                             <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Phone Number</p>
                             <p className="text-sm font-medium text-neutral-900">{technician.phone}</p>
+                          </div>
+                        </div>
+                      )}
+                      {technician.location && (
+                        <div className="flex items-start gap-4 p-3 rounded-2xl bg-neutral-50 border border-black/5">
+                          <div className="p-2 bg-white rounded-xl shadow-sm text-neutral-400">
+                            <MapPin className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Last Known Location</p>
+                            <div className="flex items-center justify-between mt-1">
+                              <p className="text-xs font-medium text-neutral-900">
+                                {technician.location.lat.toFixed(4)}, {technician.location.lng.toFixed(4)}
+                              </p>
+                              <a 
+                                href={`https://www.google.com/maps?q=${technician.location.lat},${technician.location.lng}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[10px] font-bold text-emerald-600 hover:underline flex items-center gap-1"
+                              >
+                                Google Maps
+                              </a>
+                            </div>
+                            <p className="text-[10px] text-neutral-400 mt-1">
+                              Updated: {technician.location.updatedAt?.toDate().toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {technician.skills && technician.skills.length > 0 && (
+                        <div className="flex items-start gap-4 p-3 rounded-2xl bg-neutral-50 border border-black/5">
+                          <div className="p-2 bg-white rounded-xl shadow-sm text-neutral-400">
+                            <CheckCircle2 className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Skills & Expertise</p>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {technician.skills.map(skill => (
+                                <span key={skill} className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-bold rounded-md border border-blue-100">
+                                  {skill}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         </div>
                       )}

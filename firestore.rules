@@ -290,6 +290,17 @@ service cloud.firestore {
              (!('updatedAt' in data) || data.updatedAt is timestamp);
     }
 
+    function isValidReport(data) {
+      return data.type in ['weekly', 'monthly'] &&
+             data.startDate is timestamp &&
+             data.endDate is timestamp &&
+             data.completedTickets is int &&
+             data.avgResolutionTime is number &&
+             data.totalMaterialCost is number &&
+             data.materialUsage is list &&
+             data.createdAt is timestamp;
+    }
+
     // Rules
     match /users/{userId} {
       allow read: if true;
@@ -414,6 +425,12 @@ service cloud.firestore {
     match /jobs/{jobId} {
       allow read: if isAuthenticated();
       allow create, update: if isAdmin() && (request.auth.token.email == "rafandanetid@gmail.com" || isValidJob(request.resource.data));
+      allow delete: if isAdmin();
+    }
+
+    match /reports/{reportId} {
+      allow read: if isStaf();
+      allow create: if isAdmin() && isValidReport(request.resource.data);
       allow delete: if isAdmin();
     }
   }

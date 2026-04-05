@@ -50,8 +50,13 @@ export default function AssignmentModal({
           
           Technicians:
           ${technicians.map(t => {
-            const workload = allTickets.filter(tk => tk.technicianIds?.includes(t.id) && (tk.status === 'open' || tk.status === 'in-progress')).length;
-            return `- ID: ${t.id}, Name: ${t.name}, Skills: ${t.skills?.join(', ') || 'N/A'}, Status: ${t.availabilityStatus || 'Available'}, Current Workload: ${workload} active tickets`;
+            const activeTickets = allTickets.filter(tk => tk.technicianIds?.includes(t.id) && (tk.status === 'open' || tk.status === 'in-progress'));
+            const weightedWorkload = activeTickets.reduce((sum, tk) => {
+              let base = tk.points || 10;
+              let mult = tk.priority === 'urgent' ? 1.5 : tk.priority === 'high' ? 1.2 : 1.0;
+              return sum + (base * mult);
+            }, 0);
+            return `- ID: ${t.id}, Name: ${t.name}, Specialization: ${t.specialization || 'N/A'}, Skills: ${t.skills?.join(', ') || 'N/A'}, Status: ${t.availabilityStatus || 'Available'}, Workload: ${activeTickets.length} tickets (${Math.round(weightedWorkload)} weighted points)`;
           }).join('\n')}
           
           Return JSON format: { "techId": "ID", "reason": "Short reason why" }
@@ -131,7 +136,7 @@ export default function AssignmentModal({
                 </div>
               )}
 
-              {smartSuggestions.map(({ technician: tech, score, reasons, workload }) => {
+              {smartSuggestions.map(({ technician: tech, score, reasons, workload, totalPoints }) => {
                 const isAssigned = ticket.technicianIds?.includes(tech.id);
                 const isSuggested = aiSuggestion?.techId === tech.id;
                 const topScore = smartSuggestions[0].score;
@@ -186,7 +191,7 @@ export default function AssignmentModal({
                               {tech.availabilityStatus || 'Available'}
                             </span>
                             <span className="text-[9px] text-neutral-400 font-medium">
-                              {workload} active tickets
+                              {workload} tickets ({totalPoints} pts)
                             </span>
                           </div>
                         </div>

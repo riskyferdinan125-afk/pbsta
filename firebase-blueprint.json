@@ -362,6 +362,33 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["pid", "description", "status", "createdAt"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "Aggregated summary report for a specific period",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["weekly", "monthly"] },
+        "startDate": { "type": "string", "format": "date-time" },
+        "endDate": { "type": "string", "format": "date-time" },
+        "completedTickets": { "type": "integer" },
+        "avgResolutionTime": { "type": "number", "description": "Average resolution time in minutes" },
+        "totalMaterialCost": { "type": "number" },
+        "materialUsage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "materialId": { "type": "string" },
+              "name": { "type": "string" },
+              "totalQuantity": { "type": "number" },
+              "totalCost": { "type": "number" }
+            }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "startDate", "endDate", "completedTickets", "createdAt"]
     }
   },
   "firestore": {
@@ -382,6 +409,7 @@
     "/telegramConfig": { "schema": "TelegramConfig", "description": "System-wide bot settings" },
     "/ticketCategories": { "schema": "TicketCategory", "description": "Categories and subcategories for tickets" },
     "/projects": { "schema": "Project", "description": "Collection of project records" },
-    "/jobs": { "schema": "Job", "description": "Collection of available jobs" }
+    "/jobs": { "schema": "Job", "description": "Collection of available jobs" },
+    "/reports": { "schema": "Report", "description": "Collection of generated reports" }
   }
 }

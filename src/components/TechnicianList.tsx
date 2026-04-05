@@ -3,11 +3,15 @@ import { collection, onSnapshot, addDoc, updateDoc, doc, deleteDoc, writeBatch, 
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, handleFirestoreError, OperationType } from '../firebase';
 import { Technician, AvailabilityStatus, UserProfile } from '../types';
-import { Plus, Search, Wrench, Mail, Phone, Briefcase, Edit2, Trash2, X, Calendar, Camera, Upload, Activity, Eye } from 'lucide-react';
+import { Plus, Search, Wrench, Mail, Phone, Briefcase, Edit2, Trash2, X, Calendar, Camera, Upload, Activity, Eye, MapPin, User, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow } from '@vis.gl/react-google-maps';
 import ConfirmationModal from './ConfirmationModal';
 import TechnicianDetailsModal from './TechnicianDetailsModal';
 import { useToast } from './Toast';
+
+const API_KEY = process.env.GOOGLE_MAPS_PLATFORM_KEY || '';
+const hasValidMapsKey = Boolean(API_KEY) && API_KEY !== '';
 
 interface TechnicianListProps {
   profile: UserProfile | null;
@@ -35,6 +39,8 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [selectedDetailsTech, setSelectedDetailsTech] = useState<Technician | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id?: string; isBulk?: boolean }>({ isOpen: false });
+  const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
+  const [selectedMarker, setSelectedMarker] = useState<Technician | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -45,7 +51,9 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
     photoURL: '',
     availabilityStatus: 'Available' as any,
     workingDays: [] as string[],
-    workingHours: ''
+    workingHours: '',
+    skills: '',
+    specialization: ''
   });
 
   const [error, setError] = useState<string | null>(null);
@@ -76,22 +84,21 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
     if (!formData.workingHours.trim()) { setError('Working hours are required'); return; }
 
     try {
+      const skillsArray = formData.skills.split(',').map(s => s.trim()).filter(Boolean);
+      const dataToSave = {
+        ...formData,
+        skills: skillsArray,
+        updatedAt: serverTimestamp()
+      };
+
       if (editingTech) {
-        await updateDoc(doc(db, 'users', editingTech.id), {
-          ...formData,
-          updatedAt: serverTimestamp()
-        });
+        await updateDoc(doc(db, 'users', editingTech.id), dataToSave);
         showToast('Technician updated successfully', 'success');
       } else {
-        // For users, we usually create them via UserManagement or Auth
-        // But if we add here, we need to be careful about UID
-        // For now, let's keep it consistent with UserManagement if possible
-        // Or just add to users collection
         await addDoc(collection(db, 'users'), {
-          ...formData,
+          ...dataToSave,
           role: 'teknisi',
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
+          createdAt: serverTimestamp()
         });
         showToast('Technician added successfully', 'success');
       }
@@ -190,11 +197,13 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
         photoURL: tech.photoURL || '',
         availabilityStatus: tech.availabilityStatus || 'Available',
         workingDays: tech.workingDays || [],
-        workingHours: tech.workingHours || ''
+        workingHours: tech.workingHours || '',
+        skills: tech.skills?.join(', ') || '',
+        specialization: tech.specialization || ''
       });
     } else {
       setEditingTech(null);
-      setFormData({ name: '', nik: '', email: '', phone: '', role: '', photoURL: '', availabilityStatus: 'Available', workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'], workingHours: '08:00-17:00' });
+      setFormData({ name: '', nik: '', email: '', phone: '', role: '', photoURL: '', availabilityStatus: 'Available', workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'], workingHours: '08:00-17:00', skills: '', specialization: '' });
     }
     setIsModalOpen(true);
     setError(null);
@@ -203,7 +212,7 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingTech(null);
-    setFormData({ name: '', nik: '', email: '', phone: '', role: '', photoURL: '', availabilityStatus: 'Available', workingDays: [], workingHours: '' });
+    setFormData({ name: '', nik: '', email: '', phone: '', role: '', photoURL: '', availabilityStatus: 'Available', workingDays: [], workingHours: '', skills: '', specialization: '' });
     setError(null);
     setUploading(false);
   };
@@ -282,6 +291,22 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
                 <option key={role} value={role}>{role}</option>
               ))}
             </select>
+            <div className="flex items-center bg-white border border-black/5 rounded-xl p-1">
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`p-1.5 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-emerald-50 text-emerald-600' : 'text-neutral-400 hover:text-neutral-600'}`}
+                title="Grid View"
+              >
+                <Briefcase className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setViewMode('map')}
+                className={`p-1.5 rounded-lg transition-all ${viewMode === 'map' ? 'bg-emerald-50 text-emerald-600' : 'text-neutral-400 hover:text-neutral-600'}`}
+                title="Map View"
+              >
+                <MapPin className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -333,148 +358,241 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {loading ? (
-          [1,2,3].map(i => <div key={i} className="h-48 bg-white rounded-2xl border border-black/5 animate-pulse"></div>)
-        ) : filteredTechs.length > 0 ? filteredTechs.map((tech) => (
-          <motion.div
-            layout
-            key={tech.id}
-            className="bg-white p-6 rounded-2xl border border-black/5 shadow-sm hover:shadow-md transition-all group relative"
-          >
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-3">
-                {canManage && (
-                  <input 
-                    type="checkbox" 
-                    className="rounded border-black/10 text-emerald-600 focus:ring-emerald-500/20"
-                    checked={selectedTechIds.includes(tech.id)}
-                    onChange={() => toggleSelectTech(tech.id)}
-                  />
-                )}
-                <div 
-                  onClick={() => openDetails(tech)}
-                  className="w-14 h-14 bg-neutral-50 text-neutral-400 rounded-2xl flex items-center justify-center overflow-hidden border border-black/5 shadow-inner cursor-pointer hover:border-emerald-500/50 transition-all"
-                >
-                  {tech.photoURL ? (
-                    <img 
-                      src={resolvePhotoUrl(tech.photoURL)} 
-                      alt={tech.name} 
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
+        {viewMode === 'grid' ? (
+          loading ? (
+            [1,2,3].map(i => <div key={i} className="h-48 bg-white rounded-2xl border border-black/5 animate-pulse"></div>)
+          ) : filteredTechs.length > 0 ? filteredTechs.map((tech) => (
+            <motion.div
+              layout
+              key={tech.id}
+              className="bg-white p-6 rounded-2xl border border-black/5 shadow-sm hover:shadow-md transition-all group relative"
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  {canManage && (
+                    <input 
+                      type="checkbox" 
+                      className="rounded border-black/10 text-emerald-600 focus:ring-emerald-500/20"
+                      checked={selectedTechIds.includes(tech.id)}
+                      onChange={() => toggleSelectTech(tech.id)}
                     />
-                  ) : (
-                    <Wrench className="w-7 h-7" />
+                  )}
+                  <div 
+                    onClick={() => openDetails(tech)}
+                    className="w-14 h-14 bg-neutral-50 text-neutral-400 rounded-2xl flex items-center justify-center overflow-hidden border border-black/5 shadow-inner cursor-pointer hover:border-emerald-500/50 transition-all"
+                  >
+                    {tech.photoURL ? (
+                      <img 
+                        src={resolvePhotoUrl(tech.photoURL)} 
+                        alt={tech.name} 
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <Wrench className="w-7 h-7" />
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button 
+                    onClick={() => openDetails(tech)}
+                    className="p-2 hover:bg-neutral-100 text-neutral-500 rounded-lg"
+                    title="View Details"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </button>
+                  {(canManage || profile?.email === tech.email) && (
+                    <button 
+                      onClick={() => openModal(tech)}
+                      className="p-2 hover:bg-neutral-100 text-neutral-500 rounded-lg"
+                      title="Edit Technician"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                  )}
+                  {canManage && (
+                    <button 
+                      onClick={() => handleDelete(tech.id)}
+                      className="p-2 hover:bg-red-50 text-red-600 rounded-lg"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   )}
                 </div>
-              </div>
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button 
-                  onClick={() => openDetails(tech)}
-                  className="p-2 hover:bg-neutral-100 text-neutral-500 rounded-lg"
-                  title="View Details"
-                >
-                  <Eye className="w-4 h-4" />
-                </button>
-                {(canManage || profile?.email === tech.email) && (
-                  <button 
-                    onClick={() => openModal(tech)}
-                    className="p-2 hover:bg-neutral-100 text-neutral-500 rounded-lg"
-                    title="Edit Technician"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                )}
-                {canManage && (
-                  <button 
-                    onClick={() => handleDelete(tech.id)}
-                    className="p-2 hover:bg-red-50 text-red-600 rounded-lg"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className="text-lg font-bold text-neutral-900 truncate">{tech.name}</h3>
-              <div className={`w-2 h-2 rounded-full shrink-0 ${
-                tech.availabilityStatus === 'Available' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' :
-                tech.availabilityStatus === 'Busy' ? 'bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.4)]' :
-                'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]'
-              }`} title={tech.availabilityStatus} />
-            </div>
-            <p className="text-sm text-emerald-600 font-medium mb-4 truncate">{tech.role || 'General Technician'}</p>
-            
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-2">
-                {tech.nik && (
-                  <div className="flex items-center gap-3 text-sm text-neutral-500">
-                    <Activity className="w-4 h-4 shrink-0" />
-                    <span className="font-mono">{tech.nik}</span>
-                  </div>
-                )}
-                <div className="flex items-center gap-3 text-sm text-neutral-500">
-                  <Mail className="w-4 h-4 shrink-0" />
-                  <span className="truncate">{tech.email}</span>
-                </div>
-                {tech.phone && (
-                  <div className="flex items-center gap-3 text-sm text-neutral-500">
-                    <Phone className="w-4 h-4 shrink-0" />
-                    <span>{tech.phone}</span>
-                  </div>
-                )}
               </div>
               
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Availability Status</span>
-                <div className="flex items-center gap-1 bg-neutral-50 p-1 rounded-xl border border-black/5">
-                  {(['Available', 'Busy', 'On Leave', 'Offline'] as AvailabilityStatus[]).map((status) => (
-                    <button
-                      key={status}
-                      disabled={!canManage && profile?.email !== tech.email}
-                      onClick={() => updateTechStatus(tech.id, status)}
-                      className={`px-2 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex-1 text-center ${
-                        tech.availabilityStatus === status
-                          ? status === 'Available' ? 'bg-emerald-600 text-white shadow-sm' :
-                            status === 'Busy' ? 'bg-yellow-400 text-neutral-900 shadow-sm' :
-                            status === 'On Leave' ? 'bg-red-600 text-white shadow-sm' :
-                            'bg-neutral-500 text-white shadow-sm'
-                          : 'text-neutral-400 hover:text-neutral-600'
-                      } disabled:opacity-50 disabled:cursor-not-allowed`}
-                    >
-                      {status}
-                    </button>
-                  ))}
-                </div>
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-lg font-bold text-neutral-900 truncate">{tech.name}</h3>
+                <div className={`w-2 h-2 rounded-full shrink-0 ${
+                  tech.availabilityStatus === 'Available' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' :
+                  tech.availabilityStatus === 'Busy' ? 'bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.4)]' :
+                  'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]'
+                }`} title={tech.availabilityStatus} />
               </div>
-
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Schedule</span>
-                <div className="flex flex-wrap gap-1">
-                  {tech.workingDays?.map(day => (
-                    <span key={day} className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-bold rounded-md border border-blue-100">
-                      {day}
-                    </span>
-                  ))}
-                  {tech.workingHours && (
-                    <span className="px-2 py-0.5 bg-neutral-100 text-neutral-600 text-[10px] font-bold rounded-md border border-black/5">
-                      {tech.workingHours}
-                    </span>
+              <p className="text-sm text-emerald-600 font-medium mb-4 truncate">{tech.role || 'General Technician'}</p>
+              
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-2">
+                  {tech.nik && (
+                    <div className="flex items-center gap-3 text-sm text-neutral-500">
+                      <Activity className="w-4 h-4 shrink-0" />
+                      <span className="font-mono">{tech.nik}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3 text-sm text-neutral-500">
+                    <Mail className="w-4 h-4 shrink-0" />
+                    <span className="truncate">{tech.email}</span>
+                  </div>
+                  {tech.phone && (
+                    <div className="flex items-center gap-3 text-sm text-neutral-500">
+                      <Phone className="w-4 h-4 shrink-0" />
+                      <span>{tech.phone}</span>
+                    </div>
                   )}
                 </div>
+                
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Availability Status</span>
+                  <div className="flex items-center gap-1 bg-neutral-50 p-1 rounded-xl border border-black/5">
+                    {(['Available', 'Busy', 'On Leave', 'Offline'] as AvailabilityStatus[]).map((status) => (
+                      <button
+                        key={status}
+                        disabled={!canManage && profile?.email !== tech.email}
+                        onClick={() => updateTechStatus(tech.id, status)}
+                        className={`px-2 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex-1 text-center ${
+                          tech.availabilityStatus === status
+                            ? status === 'Available' ? 'bg-emerald-600 text-white shadow-sm' :
+                              status === 'Busy' ? 'bg-yellow-400 text-neutral-900 shadow-sm' :
+                              status === 'On Leave' ? 'bg-red-600 text-white shadow-sm' :
+                              'bg-neutral-500 text-white shadow-sm'
+                            : 'text-neutral-400 hover:text-neutral-600'
+                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        {status}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Schedule</span>
+                  <div className="flex flex-wrap gap-1">
+                    {tech.workingDays?.map(day => (
+                      <span key={day} className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-bold rounded-md border border-blue-100">
+                        {day}
+                      </span>
+                    ))}
+                    {tech.workingHours && (
+                      <span className="px-2 py-0.5 bg-neutral-100 text-neutral-600 text-[10px] font-bold rounded-md border border-black/5">
+                        {tech.workingHours}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
+            </motion.div>
+          )) : (
+            <div className="col-span-full py-20 text-center bg-white rounded-3xl border border-dashed border-black/10">
+              <Wrench className="w-12 h-12 text-neutral-200 mx-auto mb-4" />
+              <p className="text-neutral-500 font-medium">No technicians found matching your criteria.</p>
+              <button 
+                onClick={() => { setSearchQuery(''); setStatusFilter('All'); setRoleFilter('All'); }}
+                className="mt-4 text-emerald-600 font-bold text-sm hover:underline"
+              >
+                Clear all filters
+              </button>
             </div>
-          </motion.div>
-        )) : (
-          <div className="col-span-full py-20 text-center bg-white rounded-3xl border border-dashed border-black/10">
-            <Wrench className="w-12 h-12 text-neutral-200 mx-auto mb-4" />
-            <p className="text-neutral-500 font-medium">No technicians found matching your criteria.</p>
-            <button 
-              onClick={() => { setSearchQuery(''); setStatusFilter('All'); setRoleFilter('All'); }}
-              className="mt-4 text-emerald-600 font-bold text-sm hover:underline"
-            >
-              Clear all filters
-            </button>
+          )
+        ) : (
+          <div className="col-span-full h-[600px] bg-white rounded-3xl border border-black/5 overflow-hidden relative">
+            {!hasValidMapsKey ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center bg-neutral-50">
+                <MapPin className="w-12 h-12 text-neutral-300 mb-4" />
+                <h4 className="text-lg font-bold text-neutral-900 mb-2">Maps API Key Missing</h4>
+                <p className="text-neutral-500 max-w-md">
+                  Google Maps Platform API key is not configured. Please add GOOGLE_MAPS_PLATFORM_KEY to your environment variables.
+                </p>
+              </div>
+            ) : (
+              <APIProvider apiKey={API_KEY}>
+                <Map
+                  defaultCenter={{ lat: -6.2088, lng: 106.8456 }} // Default to Jakarta
+                  defaultZoom={11}
+                  mapId="TECHNICIAN_LOCATIONS"
+                  className="w-full h-full"
+                >
+                  {filteredTechs.filter(t => t.location).map(tech => (
+                    <AdvancedMarker
+                      key={tech.id}
+                      position={{ lat: tech.location!.lat, lng: tech.location!.lng }}
+                      onClick={() => setSelectedMarker(tech)}
+                    >
+                      <Pin
+                        background={
+                          tech.availabilityStatus === 'Available' ? '#10b981' :
+                          tech.availabilityStatus === 'Busy' ? '#facc15' :
+                          '#ef4444'
+                        }
+                        borderColor="#ffffff"
+                        glyphColor="#ffffff"
+                      />
+                    </AdvancedMarker>
+                  ))}
+
+                  {selectedMarker && selectedMarker.location && (
+                    <InfoWindow
+                      position={{ lat: selectedMarker.location.lat, lng: selectedMarker.location.lng }}
+                      onCloseClick={() => setSelectedMarker(null)}
+                    >
+                      <div className="p-2 min-w-[200px]">
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="w-10 h-10 rounded-full overflow-hidden bg-neutral-100 border border-black/5">
+                            {selectedMarker.photoURL ? (
+                              <img 
+                                src={resolvePhotoUrl(selectedMarker.photoURL)} 
+                                alt={selectedMarker.name} 
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-neutral-400">
+                                <User className="w-5 h-5" />
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-neutral-900 leading-tight">{selectedMarker.name}</h4>
+                            <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">{selectedMarker.role}</p>
+                          </div>
+                        </div>
+                        <div className="space-y-1.5 border-t border-black/5 pt-2">
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="text-neutral-500">Status:</span>
+                            <span className={`font-bold ${
+                              selectedMarker.availabilityStatus === 'Available' ? 'text-emerald-600' :
+                              selectedMarker.availabilityStatus === 'Busy' ? 'text-yellow-600' :
+                              'text-red-600'
+                            }`}>{selectedMarker.availabilityStatus}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="text-neutral-500">Last Updated:</span>
+                            <span className="text-neutral-900 font-medium">
+                              {selectedMarker.location.updatedAt?.toDate().toLocaleString()}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => openDetails(selectedMarker)}
+                            className="w-full mt-2 py-1.5 bg-neutral-900 text-white text-[10px] font-bold rounded-lg hover:bg-neutral-800 transition-colors"
+                          >
+                            View Full Profile
+                          </button>
+                        </div>
+                      </div>
+                    </InfoWindow>
+                  )}
+                </Map>
+              </APIProvider>
+            )}
           </div>
         )}
       </div>
@@ -634,6 +752,19 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
                     )}
                   </div>
                   <div>
+                    <label className="block text-sm font-medium text-neutral-700 mb-1">Main Specialization</label>
+                    <input
+                      type="text"
+                      value={formData.specialization}
+                      onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
+                      className="w-full px-4 py-2 border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                      placeholder="e.g. REGULER, PSB, SQM"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
                     <label className="block text-sm font-medium text-neutral-700 mb-1">Photo URL</label>
                     <input
                       type="url"
@@ -643,8 +774,28 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
                       placeholder="https://..."
                     />
                   </div>
+                  <div className="flex items-center gap-2 pt-6">
+                    <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                      <Zap className="w-4 h-4" />
+                    </div>
+                    <p className="text-[10px] text-neutral-400 leading-tight">
+                      Specialization helps the <span className="font-bold text-emerald-600">Smart Assignment</span> algorithm find the best match.
+                    </p>
+                  </div>
                 </div>
                 
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">Skills (Comma separated)</label>
+                  <input
+                    type="text"
+                    value={formData.skills}
+                    onChange={(e) => setFormData({ ...formData, skills: e.target.value })}
+                    className="w-full px-4 py-2 border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                    placeholder="Fiber Optic, ODP, Splitting, etc."
+                  />
+                  <p className="mt-1 text-[10px] text-neutral-400">Enter skills separated by commas to help with smart assignment.</p>
+                </div>
+
                 <div className="p-4 bg-neutral-50 rounded-2xl border border-black/5 space-y-4">
                   <h4 className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Availability & Schedule</h4>
                   

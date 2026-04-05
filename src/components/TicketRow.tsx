@@ -14,6 +14,7 @@ import {
   Users,
   Wrench,
   Zap,
+  TrendingUp,
   MoreVertical,
   X,
   Timer,
@@ -42,7 +43,7 @@ interface TicketRowProps {
   handleStopTimer: (id: string) => void;
   getStatusColor: (status: TicketStatus) => string;
   getPriorityColor: (priority: TicketPriority) => string;
-  getSLAStatus: (ticket: Ticket) => 'within-sla' | 'near-breach' | 'breached' | 'warning';
+  getSLAStatus: (ticket: Ticket) => 'within-sla' | 'near-breach' | 'breached';
   tickets: Ticket[];
 }
 
@@ -144,6 +145,12 @@ export default function TicketRow({
         <div className="flex flex-col">
           <span className="text-xs font-bold text-neutral-700">{ticket.category}</span>
           <span className="text-[10px] text-neutral-400">{ticket.subCategory || 'General'}</span>
+          {ticket.points !== undefined && (
+            <div className="flex items-center gap-1 mt-1">
+              <TrendingUp className="w-2.5 h-2.5 text-emerald-500" />
+              <span className="text-[9px] font-black text-emerald-600 uppercase tracking-tighter">{ticket.points} PTS</span>
+            </div>
+          )}
         </div>
       </td>
       <td className="px-6 py-4">
@@ -151,10 +158,21 @@ export default function TicketRow({
       </td>
       <td className="px-6 py-4">
         <div className="relative inline-block group/status">
+          <div className={`absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none ${
+            ticket.status === 'open' ? 'text-sky-500' :
+            ticket.status === 'in-progress' ? 'text-amber-500' :
+            ticket.status === 'resolved' ? 'text-emerald-500' :
+            'text-slate-500'
+          }`}>
+            {ticket.status === 'open' && <AlertCircle className="w-3 h-3" />}
+            {ticket.status === 'in-progress' && <Clock className="w-3 h-3" />}
+            {ticket.status === 'resolved' && <CheckCircle2 className="w-3 h-3" />}
+            {ticket.status === 'closed' && <X className="w-3 h-3" />}
+          </div>
           <select
             value={ticket.status}
             onChange={(e) => handleStatusChange(ticket.id, e.target.value as TicketStatus)}
-            className={`text-[10px] font-black uppercase tracking-tighter px-3 py-1 rounded-full border-none focus:ring-0 cursor-pointer transition-all appearance-none pr-7 ${getStatusColor(ticket.status)}`}
+            className={`text-[10px] font-black uppercase tracking-tighter pl-7 pr-7 py-1.5 rounded-full border focus:ring-0 cursor-pointer transition-all appearance-none ${getStatusColor(ticket.status)}`}
           >
             <option value="open">Open</option>
             <option value="in-progress">In Progress</option>
@@ -170,11 +188,11 @@ export default function TicketRow({
           return (
             <div className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-tighter ${
               sla === 'breached' ? 'text-rose-600' :
-              sla === 'warning' ? 'text-amber-600 animate-pulse' :
+              sla === 'near-breach' ? 'text-amber-600 animate-pulse' :
               'text-emerald-600'
             }`}>
               <Clock className="w-3 h-3" />
-              {sla === 'breached' ? 'Breached' : sla === 'warning' ? 'Warning' : 'Healthy'}
+              {sla === 'breached' ? 'Breached' : sla === 'near-breach' ? 'Near Breach' : 'Within SLA'}
             </div>
           );
         })()}

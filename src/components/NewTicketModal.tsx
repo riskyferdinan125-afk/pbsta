@@ -12,7 +12,8 @@ import {
   Check,
   Activity,
   Zap,
-  Sparkles
+  Sparkles,
+  TrendingUp
 } from 'lucide-react';
 import { Customer, Technician, TicketCategory, TicketPriority, TicketStatus } from '../types';
 import { 
@@ -24,7 +25,8 @@ import {
   unspeksSubCategoryWeights,
   exbisSubCategoryWeights,
   correctiveSubCategoryWeights,
-  preventiveSubCategoryWeights
+  preventiveSubCategoryWeights,
+  calculateTicketPoints
 } from '../weights';
 import TicketSelector from './TicketSelector';
 import { getTechnicianSuggestions } from '../lib/assignmentUtils';
@@ -78,6 +80,7 @@ export default function NewTicketModal({
   };
 
   const subCategories = getSubCategories(newTicket.category);
+  const currentPoints = calculateTicketPoints(newTicket.category, newTicket.subCategory);
 
   const smartSuggestions = useMemo(() => {
     if (!newTicket.category || !technicians.length) return [];
@@ -144,7 +147,15 @@ export default function NewTicketModal({
                 {/* Sub-Category - Only shown after category is selected */}
                 {newTicket.category && (
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Sub Category</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Sub Category</label>
+                      {newTicket.subCategory && (
+                        <div className="flex items-center gap-1 text-[8px] font-bold text-emerald-600 uppercase tracking-widest">
+                          <TrendingUp className="w-2.5 h-2.5" />
+                          {currentPoints} Points
+                        </div>
+                      )}
+                    </div>
                     <div className="relative">
                       <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
                       <select
@@ -337,6 +348,11 @@ export default function NewTicketModal({
                                 tech.availabilityStatus === 'Available' ? 'text-emerald-500' : 'text-neutral-400'
                               }`}>
                                 {tech.availabilityStatus || 'Available'}
+                                {suggestion && (
+                                  <span className="ml-1 text-neutral-400 font-medium">
+                                    ({suggestion.totalPoints} pts)
+                                  </span>
+                                )}
                               </span>
                               {suggestion && (
                                 <span className="text-[8px] font-black text-neutral-400">{suggestion.score}%</span>

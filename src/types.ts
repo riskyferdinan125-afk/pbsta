@@ -16,6 +16,7 @@ export interface UserProfile {
   password?: string;
   availabilityStatus?: AvailabilityStatus;
   skills?: string[];
+  specialization?: string;
   workingDays?: string[];
   workingHours?: string;
   location?: {
@@ -157,6 +158,7 @@ export interface Technician {
   photoURL?: string;
   availabilityStatus?: AvailabilityStatus;
   skills?: string[];
+  specialization?: string;
   workingDays?: string[];
   workingHours?: string;
   location?: {
@@ -187,6 +189,7 @@ export interface RepairRecord {
   id: string;
   ticketId: string;
   technicianId: string;
+  technicianName?: string;
   startTime: Timestamp;
   endTime?: Timestamp;
   type: 'Logic' | 'Physical';
@@ -252,6 +255,23 @@ export interface ProjectEvidence {
   caption?: string;
   timestamp: Timestamp;
   reportedBy: string;
+}
+
+export interface Report {
+  id: string;
+  type: 'weekly' | 'monthly';
+  startDate: Timestamp;
+  endDate: Timestamp;
+  completedTickets: number;
+  avgResolutionTime: number; // in minutes
+  totalMaterialCost: number;
+  materialUsage: {
+    materialId: string;
+    name: string;
+    totalQuantity: number;
+    totalCost: number;
+  }[];
+  createdAt: Timestamp;
 }
 
 export interface Project {

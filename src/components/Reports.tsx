@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import { RepairRecord, Technician, MaterialUsage, Ticket, UserProfile } from '../types';
+import { RepairRecord, Technician, MaterialUsage, Ticket, UserProfile, Report as ReportType } from '../types';
 import { calculateTicketPoints } from '../weights';
+import { generateReport, getPeriodDates } from '../lib/reportService';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend, LineChart, Line, AreaChart, Area } from 'recharts';
-import { Download, Filter, Calendar, Receipt, User as UserIcon, CheckCircle, AlertTriangle, XCircle, Star, Map as MapIcon, TrendingUp, Clock, Package } from 'lucide-react';
+import { Download, Filter, Calendar, Receipt, User as UserIcon, CheckCircle, AlertTriangle, XCircle, Star, Map as MapIcon, TrendingUp, Clock, Package, FileText, Plus, History } from 'lucide-react';
 import { APIProvider, Map, useMap } from '@vis.gl/react-google-maps';
 import { GoogleMapsOverlay } from '@deck.gl/google-maps';
 import { HeatmapLayer } from '@deck.gl/aggregation-layers';
@@ -36,9 +37,11 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
   const [repairRecords, setRepairRecords] = useState<RepairRecord[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [generatedReports, setGeneratedReports] = useState<ReportType[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [showOnlyMe, setShowOnlyMe] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'technicians' | 'productivity' | 'materials' | 'heatmap'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'technicians' | 'productivity' | 'materials' | 'heatmap' | 'history'>('overview');
   const [dateRange, setDateRange] = useState<'daily' | 'weekly' | 'monthly' | 'all'>('all');
 
   const myTechnician = technicians.find(t => t.email === profile?.email);
@@ -85,14 +88,33 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
       const techQuery = query(collection(db, 'users'), where('role', '==', 'teknisi'));
       const techsSnap = await getDocs(techQuery);
       const ticketsSnap = await getDocs(collection(db, 'tickets'));
+      const reportsSnap = await getDocs(query(collection(db, 'reports'), orderBy('createdAt', 'desc')));
       
       setRepairRecords(recordsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RepairRecord)));
       setTechnicians(techsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Technician)));
       setTickets(ticketsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket)));
+      setGeneratedReports(reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReportType)));
       setLoading(false);
     }
     fetchData();
   }, []);
+
+  const handleGenerateReport = async (type: 'weekly' | 'monthly') => {
+    setIsGenerating(true);
+    try {
+      const { start, end } = getPeriodDates(type, 1); // Generate for previous period
+      await generateReport(type, start, end);
+      
+      // Refresh reports list
+      const reportsSnap = await getDocs(query(collection(db, 'reports'), orderBy('createdAt', 'desc')));
+      setGeneratedReports(reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReportType)));
+      setActiveTab('history');
+    } catch (error) {
+      console.error("Error generating report:", error);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   // Calculate technician productivity, resolution time, and points
     const productivityData = technicians.map(tech => {
@@ -650,7 +672,7 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
 
       {/* Tabs */}
       <div className="flex items-center gap-2 p-1 bg-neutral-100 rounded-2xl w-fit">
-        {(['overview', 'technicians', 'productivity', 'materials', 'heatmap'] as const).map(tab => (
+        {(['overview', 'technicians', 'productivity', 'materials', 'heatmap', 'history'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -660,10 +682,140 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
                 : 'text-neutral-500 hover:text-neutral-700'
             }`}
           >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            {tab === 'history' ? 'Generated Reports' : tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
         ))}
       </div>
+
+      {activeTab === 'history' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xl font-bold text-neutral-900 flex items-center gap-2">
+              <History className="w-6 h-6 text-indigo-600" />
+              Historical Reports
+            </h3>
+            <div className="flex items-center gap-3">
+              <button
+                disabled={isGenerating}
+                onClick={() => handleGenerateReport('weekly')}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-black/5 rounded-xl text-xs font-bold hover:bg-neutral-50 transition-all shadow-sm disabled:opacity-50"
+              >
+                <Plus className="w-4 h-4" />
+                Generate Weekly
+              </button>
+              <button
+                disabled={isGenerating}
+                onClick={() => handleGenerateReport('monthly')}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition-all shadow-sm disabled:opacity-50"
+              >
+                <Plus className="w-4 h-4" />
+                Generate Monthly
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {generatedReports.map(report => (
+              <div key={report.id} className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm hover:shadow-md transition-all group">
+                <div className="flex items-center justify-between mb-4">
+                  <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                    report.type === 'weekly' ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'
+                  }`}>
+                    {report.type}
+                  </div>
+                  <span className="text-[10px] text-neutral-400 font-bold">
+                    {report.createdAt.toDate().toLocaleDateString()}
+                  </span>
+                </div>
+                
+                <h4 className="text-lg font-black text-neutral-900 mb-1">
+                  {report.startDate.toDate().toLocaleDateString()} - {report.endDate.toDate().toLocaleDateString()}
+                </h4>
+                
+                <div className="space-y-4 mt-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-3 bg-neutral-50 rounded-2xl">
+                      <p className="text-[10px] font-bold text-neutral-400 uppercase mb-1">Resolved</p>
+                      <p className="text-xl font-black text-neutral-900">{report.completedTickets}</p>
+                    </div>
+                    <div className="p-3 bg-neutral-50 rounded-2xl">
+                      <p className="text-[10px] font-bold text-neutral-400 uppercase mb-1">Avg Time</p>
+                      <p className="text-xl font-black text-neutral-900">{(report.avgResolutionTime / 60).toFixed(1)}h</p>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-rose-50 rounded-2xl border border-rose-100">
+                    <p className="text-[10px] font-bold text-rose-400 uppercase mb-1">Material Cost</p>
+                    <p className="text-xl font-black text-rose-900">Rp {report.totalMaterialCost.toLocaleString()}</p>
+                  </div>
+
+                  <div className="pt-4 border-t border-black/5">
+                    <p className="text-[10px] font-bold text-neutral-400 uppercase mb-2">Material Usage</p>
+                    <div className="space-y-1">
+                      {report.materialUsage.slice(0, 3).map(mat => (
+                        <div key={mat.materialId} className="flex justify-between text-xs">
+                          <span className="text-neutral-600 truncate max-w-[120px]">{mat.name}</span>
+                          <span className="font-bold text-neutral-900">{mat.totalQuantity} units</span>
+                        </div>
+                      ))}
+                      {report.materialUsage.length > 3 && (
+                        <p className="text-[10px] text-neutral-400 italic">+{report.materialUsage.length - 3} more items</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => {
+                    // Logic to export this specific report to PDF
+                    const doc = new jsPDF() as jsPDFWithAutoTable;
+                    doc.setFontSize(22);
+                    doc.setTextColor(16, 185, 129);
+                    doc.text(`${report.type.toUpperCase()} Performance Report`, 14, 20);
+                    doc.setFontSize(10);
+                    doc.setTextColor(100);
+                    doc.text(`Period: ${report.startDate.toDate().toLocaleDateString()} - ${report.endDate.toDate().toLocaleDateString()}`, 14, 28);
+                    
+                    doc.autoTable({
+                      startY: 40,
+                      head: [["Metric", "Value"]],
+                      body: [
+                        ["Completed Tickets", report.completedTickets.toString()],
+                        ["Avg Resolution Time", `${(report.avgResolutionTime / 60).toFixed(1)} hours`],
+                        ["Total Material Cost", `Rp ${report.totalMaterialCost.toLocaleString()}`]
+                      ],
+                      theme: 'striped',
+                      headStyles: { fillColor: [16, 185, 129] }
+                    });
+
+                    doc.text("Material Usage Details", 14, (doc as any).lastAutoTable.finalY + 15);
+                    doc.autoTable({
+                      startY: (doc as any).lastAutoTable.finalY + 20,
+                      head: [["Material Name", "Quantity", "Total Cost"]],
+                      body: report.materialUsage.map(m => [m.name, m.totalQuantity.toString(), `Rp ${m.totalCost.toLocaleString()}`]),
+                      theme: 'grid',
+                      headStyles: { fillColor: [59, 130, 246] }
+                    });
+
+                    doc.save(`${report.type}_report_${report.startDate.toDate().toISOString().split('T')[0]}.pdf`);
+                  }}
+                  className="w-full mt-6 flex items-center justify-center gap-2 px-4 py-3 bg-neutral-900 text-white rounded-2xl text-xs font-bold hover:bg-neutral-800 transition-all opacity-0 group-hover:opacity-100"
+                >
+                  <Download className="w-4 h-4" />
+                  Download PDF
+                </button>
+              </div>
+            ))}
+            {generatedReports.length === 0 && (
+              <div className="col-span-full py-20 flex flex-col items-center justify-center text-neutral-400">
+                <FileText className="w-16 h-16 mb-4 opacity-20" />
+                <p className="font-bold">No historical reports found</p>
+                <p className="text-xs">Generate your first report using the buttons above</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {activeTab === 'heatmap' && (
         <div className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm space-y-6">
@@ -1064,11 +1216,11 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1 px-2 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-bold uppercase">
                     <CheckCircle className="w-3 h-3" />
-                    Met
+                    Within SLA
                   </div>
                   <div className="flex items-center gap-1 px-2 py-1 bg-amber-50 text-amber-600 rounded-lg text-[10px] font-bold uppercase">
                     <AlertTriangle className="w-3 h-3" />
-                    Warning
+                    Near Breach
                   </div>
                   <div className="flex items-center gap-1 px-2 py-1 bg-rose-50 text-rose-600 rounded-lg text-[10px] font-bold uppercase">
                     <XCircle className="w-3 h-3" />

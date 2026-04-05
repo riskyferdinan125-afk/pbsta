@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Mail, Shield, ExternalLink, ChevronRight, Send, CheckCircle2, Lock, LayoutDashboard, Ticket, Bell, AlertCircle, X } from 'lucide-react';
+import { User, Mail, Shield, ExternalLink, ChevronRight, Send, CheckCircle2, Lock, LayoutDashboard, Ticket, Bell, AlertCircle, X, Wrench } from 'lucide-react';
 import { UserProfile as IUserProfile } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -21,8 +21,12 @@ export default function UserProfile({ profile, onNavigate }: Props) {
     return url;
   };
   const [telegramId, setTelegramId] = useState(profile?.telegramId || '');
+  const [specialization, setSpecialization] = useState(profile?.specialization || '');
+  const [skills, setSkills] = useState(profile?.skills?.join(', ') || '');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [savingSkills, setSavingSkills] = useState(false);
+  const [savedSkills, setSavedSkills] = useState(false);
   
   // Change Password State
   const [isChangingPassword, setIsChangingPassword] = useState(false);
@@ -50,6 +54,24 @@ export default function UserProfile({ profile, onNavigate }: Props) {
       console.error("Error saving telegram ID:", error);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveSkills = async () => {
+    if (!profile.uid) return;
+    setSavingSkills(true);
+    try {
+      const skillsArray = skills.split(',').map(s => s.trim()).filter(Boolean);
+      await updateDoc(doc(db, 'users', profile.uid), {
+        specialization,
+        skills: skillsArray
+      });
+      setSavedSkills(true);
+      setTimeout(() => setSavedSkills(false), 3000);
+    } catch (error) {
+      console.error("Error saving skills:", error);
+    } finally {
+      setSavingSkills(false);
     }
   };
 
@@ -174,6 +196,56 @@ export default function UserProfile({ profile, onNavigate }: Props) {
             </div>
           </div>
         </motion.div>
+
+        {profile.role === 'teknisi' && (
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white p-8 rounded-3xl border border-black/5 shadow-sm space-y-6 md:col-span-2"
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-3 bg-emerald-100 text-emerald-600 rounded-2xl">
+                <Wrench className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-bold text-neutral-900">Professional Skills</h3>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Main Specialization</label>
+                <input 
+                  type="text" 
+                  value={specialization}
+                  onChange={(e) => setSpecialization(e.target.value)}
+                  placeholder="e.g. REGULER, PSB, SQM"
+                  className="w-full px-4 py-3 bg-neutral-50 border border-black/5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                />
+                <p className="text-[10px] text-neutral-400 italic">This helps the Smart Assignment algorithm find the best tickets for you.</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Additional Skills (Comma separated)</label>
+                <input 
+                  type="text" 
+                  value={skills}
+                  onChange={(e) => setSkills(e.target.value)}
+                  placeholder="Fiber Optic, ODP, Splitting, etc."
+                  className="w-full px-4 py-3 bg-neutral-50 border border-black/5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button 
+                onClick={handleSaveSkills}
+                disabled={savingSkills}
+                className="px-8 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-all disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-emerald-600/20"
+              >
+                {savedSkills ? <CheckCircle2 className="w-4 h-4" /> : 'Update Professional Profile'}
+              </button>
+            </div>
+          </motion.div>
+        )}
 
         <motion.div 
           initial={{ opacity: 0, x: 20 }}
