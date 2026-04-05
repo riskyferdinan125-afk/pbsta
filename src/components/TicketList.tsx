@@ -428,6 +428,66 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
     }
   };
 
+  const handleStartTimer = async (id: string) => {
+    try {
+      const ticket = tickets.find(t => t.id === id);
+      if (!ticket) return;
+
+      await updateDoc(doc(db, 'tickets', id), {
+        isTimerRunning: true,
+        timerStartedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+
+      await addDoc(collection(db, 'ticketHistory'), {
+        ticketId: id,
+        type: 'timer_event',
+        toValue: 'started',
+        changedBy: profile?.name || auth.currentUser?.email || 'Unknown',
+        timestamp: serverTimestamp(),
+        description: 'Work timer started'
+      });
+      showToast('Work timer started');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `tickets/${id}`);
+      showToast('Failed to start timer', 'error');
+    }
+  };
+
+  const handleStopTimer = async (id: string) => {
+    try {
+      const ticket = tickets.find(t => t.id === id);
+      if (!ticket || !ticket.timerStartedAt) return;
+
+      const startTime = ticket.timerStartedAt.toDate();
+      const endTime = new Date();
+      const diffMinutes = Math.round((endTime.getTime() - startTime.getTime()) / 60000);
+      const totalTime = (ticket.totalTimeSpent || 0) + diffMinutes;
+
+      await updateDoc(doc(db, 'tickets', id), {
+        isTimerRunning: false,
+        timerStartedAt: null,
+        totalTimeSpent: totalTime,
+        updatedAt: serverTimestamp()
+      });
+
+      await addDoc(collection(db, 'ticketHistory'), {
+        ticketId: id,
+        type: 'timer_event',
+        fromValue: 'started',
+        toValue: 'stopped',
+        changedBy: profile?.name || auth.currentUser?.email || 'Unknown',
+        timestamp: serverTimestamp(),
+        description: `Work session ended: ${diffMinutes} minutes. Total: ${totalTime} minutes.`
+      });
+
+      showToast(`Work timer stopped. Added ${diffMinutes} minutes.`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `tickets/${id}`);
+      showToast('Failed to stop timer', 'error');
+    }
+  };
+
   const updatePriority = async (id: string, priority: TicketPriority) => {
     try {
       const ticketDoc = await getDoc(doc(db, 'tickets', id));
@@ -938,7 +998,9 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
                   setSelectedTicketId={setSelectedTicketId}
                   updatePriority={updatePriority}
                   updateTechnician={updateTechnician}
-                  getStatusColor={getStatusColor}
+                  handleStartTimer={handleStartTimer}
+                handleStopTimer={handleStopTimer}
+                getStatusColor={getStatusColor}
                   getPriorityColor={getPriorityColor}
                   getSLAStatus={getSLAStatus as any}
                   tickets={tickets}
@@ -1112,6 +1174,7 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
         onClose={() => setIsAssignModalOpen(false)}
         ticket={selectedTicket!}
         technicians={technicians}
+        allTickets={tickets}
         onUpdateTechnician={updateTechnician}
       />
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
@@ -10,7 +10,9 @@ import {
   Mail, 
   Link as LinkIcon,
   Check,
-  Activity
+  Activity,
+  Zap,
+  Sparkles
 } from 'lucide-react';
 import { Customer, Technician, TicketCategory, TicketPriority, TicketStatus } from '../types';
 import { 
@@ -25,6 +27,7 @@ import {
   preventiveSubCategoryWeights
 } from '../weights';
 import TicketSelector from './TicketSelector';
+import { getTechnicianSuggestions } from '../lib/assignmentUtils';
 
 interface NewTicketModalProps {
   isOpen: boolean;
@@ -75,6 +78,19 @@ export default function NewTicketModal({
   };
 
   const subCategories = getSubCategories(newTicket.category);
+
+  const smartSuggestions = useMemo(() => {
+    if (!newTicket.category || !technicians.length) return [];
+    // Create a dummy ticket for suggestion
+    const dummyTicket = {
+      ...newTicket,
+      id: 'new',
+      technicianIds: []
+    };
+    return getTechnicianSuggestions(dummyTicket, technicians, tickets);
+  }, [newTicket.category, newTicket.subCategory, technicians, tickets]);
+
+  const topScore = smartSuggestions[0]?.score || 0;
 
   return (
     <AnimatePresence>
@@ -277,30 +293,63 @@ export default function NewTicketModal({
 
                   {/* Technician Assignment */}
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Assign Technicians</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Assign Technicians</label>
+                      {smartSuggestions.length > 0 && (
+                        <div className="flex items-center gap-1 text-[8px] font-bold text-emerald-600 uppercase tracking-widest">
+                          <Zap className="w-2.5 h-2.5" />
+                          Smart Suggestions Active
+                        </div>
+                      )}
+                    </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {technicians.map(tech => (
-                        <button
-                          key={tech.id}
-                          onClick={() => {
-                            const isSelected = newTicket.technicianIds.includes(tech.id);
-                            setNewTicket({
-                              ...newTicket,
-                              technicianIds: isSelected
-                                ? newTicket.technicianIds.filter((id: string) => id !== tech.id)
-                                : [...newTicket.technicianIds, tech.id]
-                            });
-                          }}
-                          className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all text-left ${
-                            newTicket.technicianIds.includes(tech.id)
-                              ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                              : 'bg-white border-black/5 text-neutral-600 hover:bg-neutral-50'
-                          }`}
-                        >
-                          <div className={`w-2 h-2 rounded-full ${newTicket.technicianIds.includes(tech.id) ? 'bg-emerald-500' : 'bg-neutral-300'}`} />
-                          <span className="text-xs font-bold truncate">{tech.name}</span>
-                        </button>
-                      ))}
+                      {technicians.map(tech => {
+                        const isSelected = newTicket.technicianIds.includes(tech.id);
+                        const suggestion = smartSuggestions.find(s => s.technician.id === tech.id);
+                        const isTopMatch = suggestion?.score === topScore && topScore > 0;
+
+                        return (
+                          <button
+                            key={tech.id}
+                            type="button"
+                            onClick={() => {
+                              setNewTicket({
+                                ...newTicket,
+                                technicianIds: isSelected
+                                  ? newTicket.technicianIds.filter((id: string) => id !== tech.id)
+                                  : [...newTicket.technicianIds, tech.id]
+                              });
+                            }}
+                            className={`flex flex-col p-3 rounded-xl border transition-all text-left relative overflow-hidden ${
+                              isSelected
+                                ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                                : isTopMatch
+                                  ? 'bg-white border-emerald-500/30 ring-1 ring-emerald-500/10 text-neutral-600'
+                                  : 'bg-white border-black/5 text-neutral-600 hover:bg-neutral-50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <div className={`w-2 h-2 rounded-full ${isSelected ? 'bg-emerald-500' : 'bg-neutral-300'}`} />
+                              <span className="text-xs font-bold truncate">{tech.name}</span>
+                            </div>
+                            <div className="flex items-center justify-between w-full">
+                              <span className={`text-[8px] font-bold uppercase tracking-wider ${
+                                tech.availabilityStatus === 'Available' ? 'text-emerald-500' : 'text-neutral-400'
+                              }`}>
+                                {tech.availabilityStatus || 'Available'}
+                              </span>
+                              {suggestion && (
+                                <span className="text-[8px] font-black text-neutral-400">{suggestion.score}%</span>
+                              )}
+                            </div>
+                            {isTopMatch && !isSelected && (
+                              <div className="absolute top-0 right-0 p-1">
+                                <Zap className="w-2.5 h-2.5 text-amber-500" />
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 

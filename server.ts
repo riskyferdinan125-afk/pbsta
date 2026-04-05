@@ -1010,8 +1010,12 @@ async function initTelegramBot() {
         // EVIDEN PASCA Category Selection
         if (data.startsWith('ap_pas_cat_')) {
           const category = data.replace('ap_pas_cat_', '');
+          console.log(`[Bot] Category selected for EVIDEN PASCA: ${category} by ${chatId}`);
           const session = addProjectSessions.get(chatId);
-          if (!session) return;
+          if (!session) {
+            console.warn(`[Bot] No addProjectSession found for ${chatId} during category selection`);
+            return;
+          }
 
           session.currentEvidenPascaCategory = category;
           session.stage = 'waiting_eviden_pasca_photo';
@@ -1347,18 +1351,28 @@ async function initTelegramBot() {
       }
     });
 
-    // Handle photos for projects
+    // Consolidated photo handler for all interactive flows
     bot.on('photo', async (msg) => {
       const chatId = msg.chat.id;
       const photo = msg.photo![msg.photo!.length - 1];
       const photoUrl = `/api/telegram-photo/${photo.file_id}`;
+      const caption = (msg.caption || '').trim();
 
-      // Check for add project session
+      console.log(`[Bot] Received photo from ${chatId}, caption: "${caption}"`);
+
+      // 1. Check for add project session (interactive flow)
       const apSession = addProjectSessions.get(chatId);
       if (apSession) {
+        console.log(`[Bot] Active addProjectSession for ${chatId}, stage: ${apSession.stage}`);
+        
+        if (apSession.stage === 'waiting_eviden_pasca_category') {
+          bot?.sendMessage(chatId, "⚠️ *Pilih Kategori Terlebih Dahulu!*\n\nSilakan pilih kategori eviden pasca dari menu di atas sebelum mengirim foto.", { parse_mode: 'Markdown' });
+          return;
+        }
+
         if (apSession.stage === 'waiting_eviden_pasca_photo') {
           const category = apSession.currentEvidenPascaCategory || 'Uncategorized';
-          const photos = apSession.evidenPascaPhotos || [];
+          const photos = [...(apSession.evidenPascaPhotos || [])];
           photos.push({ category, photoUrl });
           addProjectSessions.set(chatId, { ...apSession, evidenPascaPhotos: photos });
           
@@ -1392,72 +1406,71 @@ async function initTelegramBot() {
         }
       }
 
-      const session = projectSessions.get(chatId);
-      
-      if (!session || !session.projectId || !session.stage) {
-        // If no project session, it might be a regular /progres or /close (handled elsewhere)
+      // 2. Check for repair session (interactive flow)
+      const repairSession = repairSessions.get(chatId);
+      if (repairSession && repairSession.stage === 'waiting_evidence') {
+        console.log(`[Bot] Active repairSession for ${chatId}, stage: ${repairSession.stage}`);
+        await finalizeRepair(chatId, repairSession, photo.file_id);
+        repairSessions.delete(chatId);
         return;
       }
 
-      try {
-        console.log(`[Bot] Processing photo from ${chatId} for project ${session.projectId}, stage ${session.stage}`);
-        const photo = msg.photo![msg.photo!.length - 1];
-        const photoUrl = `/api/telegram-photo/${photo.file_id}`;
-        const caption = msg.caption || '';
+      // 3. Check for project evidence session (existing projects)
+      const session = projectSessions.get(chatId);
+      if (session && session.projectId && session.stage) {
+        console.log(`[Bot] Active projectSession for ${chatId}, project: ${session.projectId}, stage: ${session.stage}`);
 
-        // Verify user
-        const userDoc = await getAuthorizedUser(chatId);
-        
-        if (!userDoc) {
-          console.warn(`[Bot] User with telegramId ${chatId} not found in users collection`);
-          bot?.sendMessage(chatId, "❌ *Akses Ditolak!*\n\nAkun Telegram Anda belum terhubung. Silakan hubungkan di menu profil.", { parse_mode: 'Markdown' });
-          return;
-        }
+        try {
+          // Verify user
+          const userDoc = await getAuthorizedUser(chatId);
+          if (!userDoc) {
+            bot?.sendMessage(chatId, "❌ *Akses Ditolak!*\n\nAkun Telegram Anda belum terhubung.", { parse_mode: 'Markdown' });
+            return;
+          }
         const userName = userDoc.data().name || 'Technician';
 
         const projectRef = doc(db, 'projects', session.projectId);
         const projectSnap = await getDoc(projectRef);
         
-        if (projectSnap.exists()) {
-          const projectData = projectSnap.data();
-          const evidence = projectData.evidence || [];
+          if (projectSnap.exists()) {
+            const projectData = projectSnap.data();
+            const evidence = projectData.evidence || [];
           
-          const newEvidence = {
-            stage: session.stage,
-            photoUrl: photoUrl,
-            caption: caption,
-            timestamp: Timestamp.now(),
-            reportedBy: userName
-          };
+            const newEvidence = {
+              stage: session.stage,
+              photoUrl: photoUrl,
+              caption: caption,
+              timestamp: Timestamp.now(),
+              reportedBy: userName
+            };
 
-          console.log(`[Bot] Updating project ${session.projectId} with new evidence item`);
-          await updateDoc(projectRef, {
-            evidence: [...evidence, newEvidence],
-            updatedAt: serverTimestamp()
-          });
+            await updateDoc(projectRef, {
+              evidence: [...evidence, newEvidence],
+              updatedAt: serverTimestamp()
+            });
 
-          bot?.sendMessage(chatId, `✅ *Eviden Terkirim!*\n\nFoto untuk tahap *${session.stage}* pada proyek *${projectData.pid}* telah berhasil disimpan.\n\n_Anda bisa mengirimkan foto lain untuk tahap ini, atau klik tombol di bawah untuk selesai._`, { 
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  { text: '🔄 Ganti Tahap', callback_data: `prj_sel_${session.projectId}` },
-                  { text: '✅ Selesai', callback_data: 'prj_finish' }
+            bot?.sendMessage(chatId, `✅ *Eviden Terkirim!*\n\nFoto untuk tahap *${session.stage}* pada proyek *${projectData.pid}* telah berhasil disimpan.`, { 
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    { text: '🔄 Ganti Tahap', callback_data: `prj_sel_${session.projectId}` },
+                    { text: '✅ Selesai', callback_data: 'prj_finish' }
+                  ]
                 ]
-              ]
-            }
-          });
-          
-          // DO NOT clear session immediately to allow multiple uploads
-          // projectSessions.delete(chatId);
-        } else {
-          console.error(`[Bot] Project ${session.projectId} not found in Firestore`);
-          bot?.sendMessage(chatId, "❌ *Proyek tidak ditemukan.*");
+              }
+            });
+          }
+          return;
+        } catch (e) {
+          console.error("Error processing project photo:", e);
         }
-      } catch (e: any) {
-        console.error("[Bot] Error saving project photo:", e);
-        const errorMsg = e.message || 'Unknown error';
-        bot?.sendMessage(chatId, `❌ *Gagal menyimpan foto eviden proyek.*\n\nDetail: ${errorMsg}`);
+      }
+
+      // 4. Handle legacy /close or /progres with photo caption
+      if (caption.toLowerCase().startsWith('/close') || caption.toLowerCase().startsWith('/progres')) {
+        console.log(`[Bot] Handling legacy command with photo from ${chatId}`);
+        processFieldUpdate(chatId, caption, photo.file_id);
       }
     });
 
@@ -1494,31 +1507,155 @@ async function initTelegramBot() {
       bot.sendMessage(chatId, "🛠️ *Progres Tiket* 🛠️\n\nSilakan masukkan *Customer ID*:", { parse_mode: 'Markdown' });
     });
 
+    // /report command
+    bot.onText(/^\/report/i, async (msg) => {
+      const chatId = msg.chat.id;
+      const userDoc = await getAuthorizedUser(chatId);
+      if (!userDoc || !['superadmin', 'admin'].includes(userDoc.data().role)) {
+        bot.sendMessage(chatId, "❌ *Akses Ditolak!*\n\nPerintah ini hanya untuk Admin/Superadmin.", { parse_mode: 'Markdown' });
+        return;
+      }
+
+      const text = msg.text || '';
+      const period = text.toLowerCase().includes('monthly') ? 'monthly' : 'weekly';
+      
+      bot.sendMessage(chatId, `📊 *Sedang membuat laporan ${period}...*`, { parse_mode: 'Markdown' });
+      
+      try {
+        const report = await generateTicketReport(period as 'weekly' | 'monthly');
+        bot.sendMessage(chatId, report, { parse_mode: 'Markdown' });
+      } catch (e: any) {
+        console.error("Error generating report:", e);
+        bot.sendMessage(chatId, `❌ *Gagal membuat laporan!*\n\nError: ${e.message}`);
+      }
+    });
+
+    // Automated Report Scheduler (Check every hour)
+    setInterval(async () => {
+      const now = new Date();
+      const hours = now.getHours();
+      const day = now.getDay(); // 0 = Sunday, 1 = Monday
+      const date = now.getDate();
+
+      // Weekly Report: Monday at 8 AM
+      if (day === 1 && hours === 8) {
+        console.log("[Scheduler] Sending weekly report...");
+        await sendAutomatedReport('weekly');
+      }
+
+      // Monthly Report: 1st of the month at 8 AM
+      if (date === 1 && hours === 8) {
+        console.log("[Scheduler] Sending monthly report...");
+        await sendAutomatedReport('monthly');
+      }
+    }, 60 * 60 * 1000);
+
+    async function sendAutomatedReport(period: 'weekly' | 'monthly') {
+      try {
+        const report = await generateTicketReport(period);
+        // Send to all admins/superadmins
+        const adminsQuery = query(collection(db, 'users'), where('role', 'in', ['admin', 'superadmin']));
+        const adminsSnap = await getDocs(adminsQuery);
+        
+        for (const adminDoc of adminsSnap.docs) {
+          const telegramId = adminDoc.data().telegramId;
+          if (telegramId) {
+            bot?.sendMessage(telegramId, report, { parse_mode: 'Markdown' });
+          }
+        }
+      } catch (e) {
+        console.error(`Error in automated ${period} report:`, e);
+      }
+    }
+
+    async function generateTicketReport(period: 'weekly' | 'monthly') {
+      const now = new Date();
+      let startTime: Date;
+      
+      if (period === 'weekly') {
+        startTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      } else {
+        startTime = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      }
+
+      const startTimestamp = Timestamp.fromDate(startTime);
+
+      // 1. Tickets Summary
+      const ticketsQuery = query(
+        collection(db, 'tickets'),
+        where('status', 'in', ['resolved', 'closed']),
+        where('updatedAt', '>=', startTimestamp)
+      );
+      
+      const ticketsSnap = await getDocs(ticketsQuery);
+      const tickets = ticketsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const totalResolved = tickets.length;
+
+      // 2. Average Resolution Time
+      let totalResolutionTime = 0;
+      let resolvedCount = 0;
+
+      tickets.forEach((t: any) => {
+        if (t.createdAt && t.updatedAt) {
+          const created = t.createdAt.toDate ? t.createdAt.toDate() : new Date(t.createdAt);
+          const updated = t.updatedAt.toDate ? t.updatedAt.toDate() : new Date(t.updatedAt);
+          const diff = (updated.getTime() - created.getTime()) / (1000 * 60); // minutes
+          if (diff > 0) {
+            totalResolutionTime += diff;
+            resolvedCount++;
+          }
+        }
+      });
+
+      const avgResolutionTime = resolvedCount > 0 ? (totalResolutionTime / resolvedCount).toFixed(1) : '0';
+
+      // 3. Material Usage
+      const repairQuery = query(
+        collection(db, 'repairRecords'),
+        where('createdAt', '>=', startTimestamp)
+      );
+      const repairSnap = await getDocs(repairQuery);
+      const repairs = repairSnap.docs.map(doc => doc.data());
+
+      const materialUsage: Record<string, { quantity: number, unit: string }> = {};
+      repairs.forEach((r: any) => {
+        if (r.materialsUsed && Array.isArray(r.materialsUsed)) {
+          r.materialsUsed.forEach((m: any) => {
+            if (!materialUsage[m.name]) {
+              materialUsage[m.name] = { quantity: 0, unit: m.unit || '' };
+            }
+            materialUsage[m.name].quantity += m.quantity || 0;
+          });
+        }
+      });
+
+      // Format Report
+      let report = `📊 *LAPORAN TIKET ${period.toUpperCase()}* 📊\n`;
+      report += `📅 Periode: ${startTime.toLocaleDateString()} - ${now.toLocaleDateString()}\n\n`;
+      
+      report += `✅ *Ringkasan Tiket*\n`;
+      report += `• Tiket Selesai: \`${totalResolved}\`\n`;
+      report += `• Rata-rata Waktu Resolusi: \`${avgResolutionTime} menit\`\n\n`;
+
+      report += `📦 *Rincian Material Terpakai*\n`;
+      const materialList = Object.entries(materialUsage);
+      if (materialList.length > 0) {
+        materialList.forEach(([name, data]) => {
+          report += `• ${name}: \`${data.quantity} ${data.unit}\`\n`;
+        });
+      } else {
+        report += `• Tidak ada penggunaan material.\n`;
+      }
+
+      report += `\n_Laporan ini dibuat otomatis oleh sistem._`;
+      return report;
+    }
+
     // /close command
     bot.onText(/^\/close/i, async (msg) => {
       const chatId = msg.chat.id;
       repairSessions.set(chatId, { command: 'close', stage: 'waiting_customer_id' });
       bot.sendMessage(chatId, "✅ *Tutup Tiket* ✅\n\nSilakan masukkan *Customer ID*:", { parse_mode: 'Markdown' });
-    });
-
-    // Handle photos with captions (for /close and /progres)
-    bot.on('photo', async (msg) => {
-      const chatId = msg.chat.id;
-      const caption = (msg.caption || '').trim();
-      
-      // Check for active interactive session
-      const repairSession = repairSessions.get(chatId);
-      if (repairSession && repairSession.stage === 'waiting_evidence') {
-        const photo = msg.photo![msg.photo!.length - 1];
-        await finalizeRepair(chatId, repairSession, photo.file_id);
-        repairSessions.delete(chatId);
-        return;
-      }
-
-      if (!caption.toLowerCase().startsWith('/close') && !caption.toLowerCase().startsWith('/progres')) return;
-
-      const photo = msg.photo![msg.photo!.length - 1];
-      processFieldUpdate(chatId, caption, photo.file_id);
     });
 
     // /pelanggan command
@@ -1925,25 +2062,25 @@ async function initTelegramBot() {
           const pid = `PRJ-${Date.now().toString().slice(-6)}`;
           const projectName = `Proyek ${apSession.tiketGamas || apSession.boqRekon || pid}`;
           
-          const evidenPascaOptions = apSession.evidenPascaPhotos 
-            ? Array.from(new Set(apSession.evidenPascaPhotos.map(p => p.category)))
-            : (apSession.evidenPasca || []);
+  const evidenPascaOptions = apSession.evidenPascaPhotos 
+    ? Array.from(new Set(apSession.evidenPascaPhotos.map(p => p.category)))
+    : (apSession.evidenPasca || []);
 
-          const projectData = {
-            pid,
-            projectName,
-            description: projectName,
-            boqRekon: apSession.boqRekon,
-            tiketGamas: apSession.tiketGamas,
-            baPendukungUrl: fileUrl,
-            evidenPraOptions: apSession.evidenPra || [],
-            prosesOptions: apSession.proses || [],
-            evidenPascaOptions,
-            status: 'open',
-            evidence: [] as any[],
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-          };
+  const projectData = {
+    pid,
+    projectName,
+    description: projectName,
+    boqRekon: apSession.boqRekon,
+    tiketGamas: apSession.tiketGamas,
+    baPendukungUrl: fileUrl,
+    evidenPraOptions: apSession.evidenPra || [],
+    prosesOptions: apSession.proses || [],
+    evidenPascaOptions,
+    status: 'open',
+    evidence: [] as any[],
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
 
           // Add evidence items for each stage
           if (apSession.evidenPra && apSession.evidenPra.length > 0) {

@@ -15,7 +15,10 @@ import {
   Wrench,
   Zap,
   MoreVertical,
-  X
+  X,
+  Timer,
+  Play,
+  Square
 } from 'lucide-react';
 import { Timestamp } from 'firebase/firestore';
 
@@ -35,6 +38,8 @@ interface TicketRowProps {
   setSelectedTicketId: (id: string) => void;
   updatePriority: (id: string, priority: TicketPriority) => void;
   updateTechnician: (ticketId: string, techId: string) => void;
+  handleStartTimer: (id: string) => void;
+  handleStopTimer: (id: string) => void;
   getStatusColor: (status: TicketStatus) => string;
   getPriorityColor: (priority: TicketPriority) => string;
   getSLAStatus: (ticket: Ticket) => 'within-sla' | 'near-breach' | 'breached' | 'warning';
@@ -57,6 +62,8 @@ export default function TicketRow({
   setSelectedTicketId,
   updatePriority,
   updateTechnician,
+  handleStartTimer,
+  handleStopTimer,
   getStatusColor,
   getPriorityColor,
   getSLAStatus,
@@ -91,11 +98,32 @@ export default function TicketRow({
       <td className="px-6 py-4">
         <div className="flex flex-col">
           <span className="text-xs font-mono font-bold text-neutral-400">#{ticket.ticketNumber || '---'}</span>
+          {ticket.isTimerRunning && (
+            <div className="flex items-center gap-1 text-[8px] font-black text-red-500 animate-pulse bg-red-50 px-1.5 py-0.5 rounded border border-red-100 w-fit mt-0.5">
+              <Timer className="w-2.5 h-2.5" />
+              RUNNING
+            </div>
+          )}
           {ticket.inseraTicketId && (
             <span className="text-[9px] font-bold text-blue-500 uppercase tracking-tighter bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 w-fit mt-0.5">
               {ticket.inseraTicketId}
             </span>
           )}
+          {(() => {
+            const isBlocked = ticket.dependsOn?.some(depId => {
+              const dep = tickets.find(t => t.id === depId);
+              return dep && dep.status !== 'resolved' && dep.status !== 'closed';
+            });
+            if (isBlocked) {
+              return (
+                <div className="flex items-center gap-1 text-[8px] font-black text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100 w-fit mt-0.5">
+                  <AlertTriangle className="w-2.5 h-2.5" />
+                  BLOCKED
+                </div>
+              );
+            }
+            return null;
+          })()}
           <div className={`mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border w-fit ${getPriorityColor(ticket.priority)}`}>
             {ticket.priority}
           </div>
@@ -307,10 +335,27 @@ export default function TicketRow({
           <button 
             onClick={() => handleStatusChange(ticket.id, 'in-progress')}
             className="p-2 hover:bg-blue-50 text-blue-600 rounded-lg"
-            title="Start Work"
+            title="Set In Progress"
           >
             <Clock className="w-4 h-4" />
           </button>
+          {ticket.isTimerRunning ? (
+            <button 
+              onClick={() => handleStopTimer(ticket.id)}
+              className="p-2 bg-red-50 text-red-600 rounded-lg animate-pulse"
+              title="Stop Timer"
+            >
+              <Square className="w-4 h-4 fill-current" />
+            </button>
+          ) : (
+            <button 
+              onClick={() => handleStartTimer(ticket.id)}
+              className="p-2 hover:bg-emerald-50 text-emerald-600 rounded-lg"
+              title="Start Timer"
+            >
+              <Play className="w-4 h-4 fill-current" />
+            </button>
+          )}
           <button 
             onClick={() => handleStatusChange(ticket.id, 'resolved')}
             className="p-2 hover:bg-emerald-50 text-emerald-600 rounded-lg"

@@ -149,18 +149,20 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
 
   useEffect(() => {
     if (ticket.dependsOn && ticket.dependsOn.length > 0) {
-      const fetchDeps = async () => {
-        const deps = await Promise.all(ticket.dependsOn!.map(async (id) => {
-          const docSnap = await getDoc(doc(db, 'tickets', id));
-          return { id: docSnap.id, ...docSnap.data() } as Ticket;
-        }));
-        setDependencyTickets(deps);
-      };
-      fetchDeps();
+      // Use onSnapshot to listen for changes in dependency tickets' status in real-time
+      const q = query(collection(db, 'tickets'), where('__name__', 'in', ticket.dependsOn));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        setDependencyTickets(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket)));
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'tickets');
+      });
+      return () => unsubscribe();
     } else {
       setDependencyTickets([]);
     }
   }, [ticket.dependsOn]);
+
+  const isBlocked = dependencyTickets.some(d => d.status !== 'resolved' && d.status !== 'closed');
 
   useEffect(() => {
     const q = query(
@@ -499,6 +501,10 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
   };
 
   const handleStartTimer = async () => {
+    if (isBlocked) {
+      showToast('Cannot start work. Ticket is blocked by unresolved dependencies.', 'error');
+      return;
+    }
     try {
       await updateDoc(doc(db, 'tickets', ticket.id), {
         isTimerRunning: true,
@@ -664,18 +670,11 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
       const status = pendingStatus;
 
       // Dependency Check
-      if ((status === 'in-progress' || status === 'resolved') && ticket.dependsOn && ticket.dependsOn.length > 0) {
-        const deps = await Promise.all(ticket.dependsOn.map(async (depId) => {
-          const depDoc = await getDoc(doc(db, 'tickets', depId));
-          return { id: depDoc.id, ...depDoc.data() } as Ticket;
-        }));
-        
-        const unfinished = deps.filter(d => d.status !== 'resolved' && d.status !== 'closed');
-        if (unfinished.length > 0) {
-          showToast(`Cannot update status. Blocked by: ${unfinished.map(u => `#${u.ticketNumber}`).join(', ')}`, 'error');
-          setIsUpdatingStatus(false);
-          return;
-        }
+      if ((status === 'in-progress' || status === 'resolved') && isBlocked) {
+        const unfinished = dependencyTickets.filter(d => d.status !== 'resolved' && d.status !== 'closed');
+        showToast(`Cannot update status. Blocked by: ${unfinished.map(u => `#${u.ticketNumber}`).join(', ')}`, 'error');
+        setIsUpdatingStatus(false);
+        return;
       }
 
       const updates: any = {
@@ -913,7 +912,7 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
               <h3 className="text-xl font-bold text-neutral-900">Ticket Details</h3>
               <div className="flex items-center gap-2">
                 <p className="text-xs text-neutral-500 font-mono">#{ticket.ticketNumber} • ID: {ticket.id}</p>
-                {dependencyTickets.some(d => d.status !== 'resolved' && d.status !== 'closed') && (
+                {isBlocked && (
                   <span className="flex items-center gap-1 px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-bold uppercase rounded-md border border-orange-200 animate-pulse">
                     <AlertTriangle className="w-2.5 h-2.5" />
                     Blocked
@@ -1026,7 +1025,12 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                     ) : (
                       <button
                         onClick={handleStartTimer}
-                        className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-lg shadow-emerald-900/20"
+                        disabled={isBlocked}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-lg ${
+                          isBlocked 
+                            ? 'bg-neutral-200 text-neutral-400 cursor-not-allowed' 
+                            : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-900/20'
+                        }`}
                       >
                         <Play className="w-3 h-3 fill-current" /> Start Work
                       </button>
@@ -1544,7 +1548,7 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                     )}
                   </AnimatePresence>
 
-                  {dependencyTickets.some(d => d.status !== 'resolved' && d.status !== 'closed') && (
+                  {isBlocked && (
                     <div className="p-4 bg-orange-50 border border-orange-100 rounded-2xl flex items-start gap-3">
                       <AlertTriangle className="w-5 h-5 text-orange-600 shrink-0 mt-0.5" />
                       <div>

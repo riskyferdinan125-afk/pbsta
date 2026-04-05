@@ -7,7 +7,8 @@ import {
   User, 
   Clock, 
   Link as LinkIcon,
-  Zap
+  Zap,
+  Timer
 } from 'lucide-react';
 import { Timestamp } from 'firebase/firestore';
 
@@ -87,6 +88,12 @@ export default function KanbanView({
                         <span className="text-[9px] font-bold text-blue-500 uppercase tracking-tighter bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 w-fit">
                           {ticket.inseraTicketId}
                         </span>
+                      )}
+                      {ticket.isTimerRunning && (
+                        <div className="flex items-center gap-1 text-[9px] font-bold text-red-500 animate-pulse bg-red-50 px-1.5 py-0.5 rounded border border-red-100 w-fit">
+                          <Timer size={10} />
+                          RUNNING
+                        </div>
                       )}
                     </div>
                     <div className="flex items-center gap-1">

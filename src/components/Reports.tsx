@@ -38,7 +38,7 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [showOnlyMe, setShowOnlyMe] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'technicians' | 'materials' | 'heatmap'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'technicians' | 'productivity' | 'materials' | 'heatmap'>('overview');
   const [dateRange, setDateRange] = useState<'daily' | 'weekly' | 'monthly' | 'all'>('all');
 
   const myTechnician = technicians.find(t => t.email === profile?.email);
@@ -96,7 +96,8 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
 
   // Calculate technician productivity, resolution time, and points
     const productivityData = technicians.map(tech => {
-      const techTickets = filteredTickets.filter(t => t.technicianIds?.includes(tech.id) && (t.status === 'resolved' || t.status === 'closed'));
+      const assignedTickets = filteredTickets.filter(t => t.technicianIds?.includes(tech.id));
+      const techTickets = assignedTickets.filter(t => t.status === 'resolved' || t.status === 'closed');
       
       let totalResolutionTime = 0;
       let validTickets = 0;
@@ -155,13 +156,15 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
       return {
         id: tech.id,
         name: tech.name,
-        resolved: resolvedCount,
+        nik: tech.nik || 'N/A',
+        assigned: assignedTickets.length,
+        completed: resolvedCount,
         points: totalPoints,
         avgResolutionTime: parseFloat(avgResolutionTime.toFixed(1)),
         avgWorkTime: parseFloat(avgWorkTime.toFixed(1)),
         checklistRate: parseFloat(checklistCompletionRate.toFixed(1))
       };
-    }).filter(d => d.resolved > 0 || d.avgResolutionTime > 0);
+    }).filter(d => d.assigned > 0 || d.completed > 0 || d.avgResolutionTime > 0);
 
   const filteredProductivityData = showOnlyMe && myTechnician 
     ? productivityData.filter(d => d.id === myTechnician.id)
@@ -169,13 +172,13 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
 
   // Fallback for demo purposes if no data exists
   const chartData = filteredProductivityData.length > 0 ? filteredProductivityData : [
-    { id: '1', name: 'Alex Rivera', resolved: 24, points: 72, avgResolutionTime: 4.2 },
-    { id: '2', name: 'Sarah Chen', resolved: 31, points: 93, avgResolutionTime: 3.5 },
-    { id: '3', name: 'Marcus Thorne', resolved: 18, points: 54, avgResolutionTime: 6.1 },
-    { id: '4', name: 'Elena Vance', resolved: 27, points: 81, avgResolutionTime: 4.8 },
-    { id: '5', name: 'Jordan Hayes', resolved: 22, points: 66, avgResolutionTime: 5.2 },
-    { id: '6', name: 'Sam Taylor', resolved: 15, points: 45, avgResolutionTime: 7.4 },
-    { id: '7', name: 'Chris Evans', resolved: 29, points: 87, avgResolutionTime: 3.9 },
+    { id: '1', name: 'Alex Rivera', nik: 'NIK001', assigned: 30, completed: 24, points: 72, avgResolutionTime: 4.2, avgWorkTime: 45, checklistRate: 95 },
+    { id: '2', name: 'Sarah Chen', nik: 'NIK002', assigned: 35, completed: 31, points: 93, avgResolutionTime: 3.5, avgWorkTime: 38, checklistRate: 98 },
+    { id: '3', name: 'Marcus Thorne', nik: 'NIK003', assigned: 25, completed: 18, points: 54, avgResolutionTime: 6.1, avgWorkTime: 55, checklistRate: 88 },
+    { id: '4', name: 'Elena Vance', nik: 'NIK004', assigned: 32, completed: 27, points: 81, avgResolutionTime: 4.8, avgWorkTime: 42, checklistRate: 92 },
+    { id: '5', name: 'Jordan Hayes', nik: 'NIK005', assigned: 28, completed: 22, points: 66, avgResolutionTime: 5.2, avgWorkTime: 48, checklistRate: 90 },
+    { id: '6', name: 'Sam Taylor', nik: 'NIK006', assigned: 20, completed: 15, points: 45, avgResolutionTime: 7.4, avgWorkTime: 62, checklistRate: 85 },
+    { id: '7', name: 'Chris Evans', nik: 'NIK007', assigned: 34, completed: 29, points: 87, avgResolutionTime: 3.9, avgWorkTime: 40, checklistRate: 96 },
   ];
 
   // Material Usage: Total quantity per material
@@ -373,9 +376,9 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
     
     // Technician Productivity Section
     csvContent += "TECHNICIAN PRODUCTIVITY\n";
-    csvContent += "Technician Name,Tickets Resolved,Performance Points,Avg Resolution Time (hrs)\n";
+    csvContent += "Technician Name,Tickets Assigned,Tickets Completed,Performance Points,Avg Resolution Time (hrs)\n";
     chartData.forEach(row => {
-      csvContent += `${row.name},${row.resolved},${row.points},${row.avgResolutionTime}\n`;
+      csvContent += `${row.name},${row.assigned || 0},${row.completed},${row.points},${row.avgResolutionTime}\n`;
     });
     
     csvContent += "\n"; // Spacer
@@ -475,7 +478,7 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
       const techSat = satisfactionData.find(s => s.name === t.name);
       return [
         t.name, 
-        t.resolved.toString(), 
+        t.completed.toString(), 
         t.points.toFixed(1), 
         `${t.avgResolutionTime}h`,
         techMat?.totalMaterials.toString() || "0",
@@ -485,7 +488,7 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
     
     doc.autoTable({
       startY: (doc as any).lastAutoTable.finalY + 20,
-      head: [["Technician", "Resolved", "Points", "Avg Time", "Materials", "Rating"]],
+      head: [["Technician", "Completed", "Points", "Avg Time", "Materials", "Rating"]],
       body: techTableData,
       theme: 'grid',
       headStyles: { fillColor: [59, 130, 246] }
@@ -647,7 +650,7 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
 
       {/* Tabs */}
       <div className="flex items-center gap-2 p-1 bg-neutral-100 rounded-2xl w-fit">
-        {(['overview', 'technicians', 'materials', 'heatmap'] as const).map(tab => (
+        {(['overview', 'technicians', 'productivity', 'materials', 'heatmap'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -711,7 +714,7 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
                     <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#737373' }} />
                     <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
                     <Legend verticalAlign="top" height={36} iconType="circle" />
-                    <Bar yAxisId="left" dataKey="resolved" name="Tickets Resolved" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
+                    <Bar yAxisId="left" dataKey="completed" name="Tickets Completed" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
                     <Bar yAxisId="left" dataKey="points" name="Performance Points" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={20} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -779,7 +782,8 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
                 <thead>
                   <tr className="bg-neutral-50 text-neutral-500 text-xs font-bold uppercase tracking-wider">
                     <th className="px-6 py-4">Technician</th>
-                    <th className="px-6 py-4 text-center">Resolved</th>
+                    <th className="px-6 py-4 text-center">Assigned</th>
+                    <th className="px-6 py-4 text-center">Completed</th>
                     <th className="px-6 py-4 text-center">Points</th>
                     <th className="px-6 py-4 text-center">Avg. Time</th>
                     <th className="px-6 py-4 text-center">Materials</th>
@@ -793,8 +797,14 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
                     const techMat = techMaterialData.find(m => m.name === tech.name);
                     return (
                       <tr key={tech.id} className="hover:bg-neutral-50 transition-colors">
-                        <td className="px-6 py-4 font-medium text-neutral-900">{tech.name}</td>
-                        <td className="px-6 py-4 text-center text-neutral-600 font-mono">{tech.resolved}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col">
+                            <span className="font-medium text-neutral-900">{tech.name}</span>
+                            <span className="text-[10px] text-neutral-400 font-mono">ID: {tech.nik || tech.id.slice(0, 8)}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-center text-neutral-600 font-mono">{tech.assigned || 0}</td>
+                        <td className="px-6 py-4 text-center text-neutral-600 font-mono">{tech.completed}</td>
                         <td className="px-6 py-4 text-center text-neutral-600 font-mono">{tech.points.toFixed(1)}</td>
                         <td className="px-6 py-4 text-center text-neutral-600 font-mono">{tech.avgResolutionTime}h</td>
                         <td className="px-6 py-4 text-center text-neutral-600 font-mono">{techMat?.totalMaterials || 0}</td>
@@ -811,6 +821,122 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'productivity' && (
+        <div className="space-y-8">
+          <div className="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-black/5 flex items-center justify-between">
+              <h3 className="font-bold text-neutral-900">Detailed Productivity Report</h3>
+              <div className="flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-emerald-500" />
+                <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Technician Work Logs</span>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-neutral-50 text-neutral-500 text-[10px] font-bold uppercase tracking-wider">
+                    <th className="px-6 py-4">Technician</th>
+                    <th className="px-6 py-4">Ticket #</th>
+                    <th className="px-6 py-4">Start Time</th>
+                    <th className="px-6 py-4">End Time</th>
+                    <th className="px-6 py-4">Duration</th>
+                    <th className="px-6 py-4">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-black/5">
+                  {technicians.map(tech => {
+                    const techRecords = repairRecords.filter(r => r.technicianId === tech.id)
+                      .sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+                    
+                    if (techRecords.length === 0) return null;
+
+                    return techRecords.map((record, index) => {
+                      const ticket = tickets.find(t => t.id === record.ticketId);
+                      const start = record.startTime?.toDate();
+                      const end = record.endTime?.toDate() || record.createdAt?.toDate();
+                      const duration = start && end ? Math.round((end.getTime() - start.getTime()) / (1000 * 60)) : 0;
+
+                      return (
+                        <tr key={record.id} className="hover:bg-neutral-50 transition-colors">
+                          {index === 0 && (
+                            <td className="px-6 py-4 font-bold text-neutral-900 border-t border-black/5" rowSpan={techRecords.length}>
+                              <div className="flex flex-col">
+                                <span>{tech.name}</span>
+                                <span className="text-[10px] text-neutral-400 font-mono">ID: {tech.nik || tech.id.slice(0, 8)}</span>
+                              </div>
+                            </td>
+                          )}
+                          <td className="px-6 py-4 font-medium text-neutral-600">
+                            #{ticket?.ticketNumber || 'N/A'}
+                          </td>
+                          <td className="px-6 py-4 text-xs text-neutral-500">
+                            {start?.toLocaleString() || 'N/A'}
+                          </td>
+                          <td className="px-6 py-4 text-xs text-neutral-500">
+                            {end?.toLocaleString() || 'N/A'}
+                          </td>
+                          <td className="px-6 py-4 text-sm font-mono text-neutral-600">
+                            {duration} min
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                              ticket?.status === 'closed' ? 'bg-neutral-100 text-neutral-600' :
+                              ticket?.status === 'resolved' ? 'bg-emerald-100 text-emerald-600' :
+                              'bg-amber-100 text-amber-600'
+                            }`}>
+                              {ticket?.status || 'Unknown'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {productivityData.map(tech => (
+              <div key={tech.id} className="bg-white p-6 rounded-2xl border border-black/5 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="font-bold text-neutral-900">{tech.name}</h4>
+                  <div className="p-2 bg-neutral-50 rounded-lg">
+                    <Clock className="w-4 h-4 text-neutral-400" />
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-neutral-500">Assigned</span>
+                    <span className="font-bold text-neutral-900">{tech.assigned}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-neutral-500">Completed</span>
+                    <span className="font-bold text-emerald-600">{tech.completed}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-neutral-500">Avg. Resolution</span>
+                    <span className="font-bold text-neutral-900">{tech.avgResolutionTime}h</span>
+                  </div>
+                  <div className="pt-3 border-t border-black/5">
+                    <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-neutral-400 mb-1">
+                      <span>Completion Rate</span>
+                      <span>{Math.round((tech.completed / (tech.assigned || 1)) * 100)}%</span>
+                    </div>
+                    <div className="h-1.5 bg-neutral-100 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-emerald-500" 
+                        style={{ width: `${Math.round((tech.completed / (tech.assigned || 1)) * 100)}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
