@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, where, orderBy, onSnapshot, Timestamp, addDoc, serverTimestamp, updateDoc, doc, getDoc, getDocs } from 'firebase/firestore';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
+import DOMPurify from 'dompurify';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { 
   calculateTicketPoints, 
@@ -14,7 +17,7 @@ import {
   preventiveSubCategoryWeights
 } from '../weights';
 import { Ticket, TicketHistory, Technician, Customer, TicketStatus, TicketPriority, TicketCategory, RepairRecord, TicketNote, UserProfile, ChecklistItem, Notification, Material } from '../types';
-import { X, Edit2, Check, TrendingUp, Clock, User, ArrowRight, History, Info, Wrench, Send, MessageSquare, UserPlus, RefreshCw, PlusCircle, Link as LinkIcon, AlertTriangle, CheckCircle, CheckCircle2, AlertCircle, Package, StickyNote, ChevronRight, Loader2, Hash, Box, MapPin, Phone, Mail, Camera, Play, Square, Navigation, Timer, HelpCircle, Trash2, ExternalLink, Calendar, Tag, Search, Share2, ArrowUpRight, Lock } from 'lucide-react';
+import { X, Edit2, Check, TrendingUp, Clock, User, ArrowRight, History, Info, Wrench, Send, MessageSquare, UserPlus, RefreshCw, PlusCircle, Link as LinkIcon, AlertTriangle, CheckCircle, CheckCircle2, AlertCircle, Package, StickyNote, ChevronRight, Loader2, Hash, Box, MapPin, Phone, Mail, Camera, Play, Square, Navigation, Timer, HelpCircle, Trash2, ExternalLink, Calendar, Tag, Search, Share2, ArrowUpRight, Lock, FileText, Type, AlignLeft, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from './Toast';
 import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
@@ -25,6 +28,8 @@ const hasValidMapsKey = Boolean(API_KEY) && API_KEY !== '';
 import DependencyManagerModal from './DependencyManagerModal';
 import TechnicianGuide from './TechnicianGuide';
 import RepairRecordForm from './RepairRecordForm';
+import TechnicianSuggesterModal from './TechnicianSuggesterModal';
+import AssignmentModal from './AssignmentModal';
 
 interface TicketDetailsModalProps {
   ticket: Ticket & { customerName?: string };
@@ -71,11 +76,25 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
   const [pendingStatus, setPendingStatus] = useState<TicketStatus | null>(null);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [isRepairModalOpen, setIsRepairModalOpen] = useState(false);
+  const [isSuggesterModalOpen, setIsSuggesterModalOpen] = useState(false);
+  const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
   const canManage = profile?.role === 'superadmin' || profile?.role === 'admin';
   const [isEditingCategory, setIsEditingCategory] = useState(false);
   const [isEditingSubCategory, setIsEditingSubCategory] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [tempCategory, setTempCategory] = useState<TicketCategory>(ticket.category);
   const [tempSubCategory, setTempSubCategory] = useState(ticket.subCategory || '');
+  const [tempTitle, setTempTitle] = useState(ticket.title);
+  const [tempDescription, setTempDescription] = useState(ticket.description);
+
+  const quillModules = {
+    toolbar: [
+      ['bold', 'italic', 'underline', 'strike'],
+      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+      ['link', 'clean'],
+    ],
+  };
 
   useEffect(() => {
     const material = availableMaterials.find(m => m.id === selectedMaterialId);
@@ -99,6 +118,15 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
         addedBy: auth.currentUser?.email || 'Unknown',
         createdAt: serverTimestamp()
       });
+
+      await addDoc(collection(db, 'ticketHistory'), {
+        ticketId: ticket.id,
+        type: 'material_change',
+        toValue: `${materialQuantity}x ${material.name}`,
+        changedBy: profile?.name || auth.currentUser?.email || 'Unknown',
+        timestamp: serverTimestamp(),
+        description: `Added ${materialQuantity} units of ${material.name}`
+      });
       
       setSelectedMaterialId('');
       setMaterialQuantity(1);
@@ -111,12 +139,24 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
 
   const handleRemoveMaterial = async (id: string) => {
     try {
-      await updateDoc(doc(db, 'tickets', ticket.id, 'materialsUsed', id), {
-        deleted: true // Or just delete it
-      });
-      // Actually let's just delete it for simplicity as per request
+      const matSnap = await getDoc(doc(db, 'tickets', ticket.id, 'materialsUsed', id));
+      const matData = matSnap.data();
+
       const { deleteDoc } = await import('firebase/firestore');
       await deleteDoc(doc(db, 'tickets', ticket.id, 'materialsUsed', id));
+
+      if (matData) {
+        await addDoc(collection(db, 'ticketHistory'), {
+          ticketId: ticket.id,
+          type: 'material_change',
+          fromValue: `${matData.quantity}x ${matData.name}`,
+          toValue: 'Removed',
+          changedBy: profile?.name || auth.currentUser?.email || 'Unknown',
+          timestamp: serverTimestamp(),
+          description: `Removed ${matData.quantity} units of ${matData.name}`
+        });
+      }
+
       showToast('Material removed from ticket', 'success');
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `tickets/${ticket.id}/materialsUsed/${id}`);
@@ -448,6 +488,62 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
     }
   };
 
+  const handleUpdateTitle = async () => {
+    if (!tempTitle.trim() || tempTitle === ticket.title) {
+      setIsEditingTitle(false);
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, 'tickets', ticket.id), {
+        title: tempTitle,
+        updatedAt: serverTimestamp()
+      });
+
+      await addDoc(collection(db, 'ticketHistory'), {
+        ticketId: ticket.id,
+        type: 'title_change',
+        fromValue: ticket.title,
+        toValue: tempTitle,
+        changedBy: profile?.name || auth.currentUser?.email || 'Unknown',
+        timestamp: serverTimestamp()
+      });
+
+      setIsEditingTitle(false);
+      showToast('Ticket title updated');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `tickets/${ticket.id}`);
+    }
+  };
+
+  const handleUpdateDescription = async () => {
+    if (tempDescription === ticket.description) {
+      setIsEditingDescription(false);
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, 'tickets', ticket.id), {
+        description: tempDescription,
+        updatedAt: serverTimestamp()
+      });
+
+      await addDoc(collection(db, 'ticketHistory'), {
+        ticketId: ticket.id,
+        type: 'description_change',
+        fromValue: ticket.description,
+        toValue: tempDescription,
+        changedBy: profile?.name || auth.currentUser?.email || 'Unknown',
+        timestamp: serverTimestamp()
+      });
+
+      setIsEditingDescription(false);
+      showToast('Ticket description updated');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `tickets/${ticket.id}`);
+    }
+  };
+
   const handleUpdateCategory = async (category: TicketCategory) => {
     try {
       const oldCategory = ticket.category;
@@ -598,6 +694,16 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
         [type === 'before' ? 'beforePhoto' : 'afterPhoto']: mockUrl,
         updatedAt: serverTimestamp()
       });
+
+      await addDoc(collection(db, 'ticketHistory'), {
+        ticketId: ticket.id,
+        type: 'photo_upload',
+        toValue: type === 'before' ? 'Before Photo' : 'After Photo',
+        changedBy: profile?.name || auth.currentUser?.email || 'Unknown',
+        timestamp: serverTimestamp(),
+        description: `Uploaded ${type} repair photo`
+      });
+
       showToast(`${type === 'before' ? 'Before' : 'After'} photo uploaded`);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `tickets/${ticket.id}`);
@@ -615,6 +721,16 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
         checklist: updatedChecklist,
         updatedAt: serverTimestamp()
       });
+
+      await addDoc(collection(db, 'ticketHistory'), {
+        ticketId: ticket.id,
+        type: 'checklist_change',
+        toValue: newItem.task,
+        changedBy: profile?.name || auth.currentUser?.email || 'Unknown',
+        timestamp: serverTimestamp(),
+        description: `Added checklist item: ${newItem.task}`
+      });
+
       setNewChecklistItem('');
       showToast('Checklist item added');
     } catch (error) {
@@ -652,6 +768,15 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
 
       await updateDoc(doc(db, 'tickets', ticket.id), updates);
 
+      await addDoc(collection(db, 'ticketHistory'), {
+        ticketId: ticket.id,
+        type: 'checklist_change',
+        toValue: item.task,
+        changedBy: profile?.name || auth.currentUser?.email || 'Unknown',
+        timestamp: serverTimestamp(),
+        description: `Marked "${item.task}" as ${item.completed ? 'completed' : 'incomplete'}`
+      });
+
       // Notify admins if all checklist items are completed
       if (updatedChecklist.length > 0 && updatedChecklist.every(item => item.completed)) {
         await sendNotification(
@@ -669,6 +794,7 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
   };
 
   const handleRemoveChecklistItem = async (index: number) => {
+    const itemToRemove = (ticket.checklist || [])[index];
     const updatedChecklist = (ticket.checklist || []).filter((_, i) => i !== index);
     
     try {
@@ -676,6 +802,19 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
         checklist: updatedChecklist,
         updatedAt: serverTimestamp()
       });
+
+      if (itemToRemove) {
+        await addDoc(collection(db, 'ticketHistory'), {
+          ticketId: ticket.id,
+          type: 'checklist_change',
+          fromValue: itemToRemove.task,
+          toValue: 'Removed',
+          changedBy: profile?.name || auth.currentUser?.email || 'Unknown',
+          timestamp: serverTimestamp(),
+          description: `Removed checklist item: ${itemToRemove.task}`
+        });
+      }
+
       showToast('Checklist item removed');
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `tickets/${ticket.id}`);
@@ -879,6 +1018,12 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
       case 'due_date_change': return <Calendar className="w-3.5 h-3.5 text-rose-500" />;
       case 'timer_event': return <Clock className="w-3.5 h-3.5 text-emerald-600" />;
       case 'note_added': return <MessageSquare className="w-3.5 h-3.5 text-orange-500" />;
+      case 'checklist_change': return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />;
+      case 'photo_upload': return <Camera className="w-3.5 h-3.5 text-blue-500" />;
+      case 'material_change': return <Package className="w-3.5 h-3.5 text-amber-500" />;
+      case 'repair_record_added': return <FileText className="w-3.5 h-3.5 text-emerald-600" />;
+      case 'title_change': return <Type className="w-3.5 h-3.5 text-neutral-500" />;
+      case 'description_change': return <AlignLeft className="w-3.5 h-3.5 text-neutral-500" />;
       default: return <History className="w-3.5 h-3.5 text-neutral-400" />;
     }
   };
@@ -981,6 +1126,52 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
             </p>
           </div>
         );
+      case 'checklist_change':
+        return (
+          <div className="flex flex-col gap-1">
+            <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-wider">Checklist Update</span>
+            <p className="text-sm text-neutral-700">{item.description}</p>
+          </div>
+        );
+      case 'photo_upload':
+        return (
+          <div className="flex flex-col gap-1">
+            <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-wider">Photo Uploaded</span>
+            <p className="text-sm text-neutral-700">{item.description}</p>
+          </div>
+        );
+      case 'material_change':
+        return (
+          <div className="flex flex-col gap-1">
+            <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-wider">Material Update</span>
+            <p className="text-sm text-neutral-700">{item.description}</p>
+          </div>
+        );
+      case 'repair_record_added':
+        return (
+          <div className="flex flex-col gap-1">
+            <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-wider">Repair Record Added</span>
+            <p className="text-sm text-neutral-700 font-medium">{item.toValue}</p>
+          </div>
+        );
+      case 'title_change':
+        return (
+          <div className="flex flex-col gap-1">
+            <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-wider">Title Update</span>
+            <div className="flex flex-col gap-1">
+              <p className="text-xs text-neutral-400 line-through">{item.fromValue}</p>
+              <ArrowRight className="w-3 h-3 text-neutral-400" />
+              <p className="text-sm text-neutral-900 font-bold">{item.toValue}</p>
+            </div>
+          </div>
+        );
+      case 'description_change':
+        return (
+          <div className="flex flex-col gap-1">
+            <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-wider">Description Update</span>
+            <p className="text-xs text-neutral-500 italic">Description was updated by {item.changedBy}</p>
+          </div>
+        );
       default:
         return <span className="text-sm text-neutral-700">{item.toValue}</span>;
     }
@@ -1001,7 +1192,32 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
               <Info className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-neutral-900">Ticket Details</h3>
+              {isEditingTitle ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={tempTitle}
+                    onChange={(e) => setTempTitle(e.target.value)}
+                    className="text-xl font-bold text-neutral-900 bg-white border border-emerald-500 rounded-lg px-2 py-1 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    autoFocus
+                  />
+                  <button onClick={handleUpdateTitle} className="p-1 text-emerald-600 hover:bg-emerald-50 rounded">
+                    <Check className="w-5 h-5" />
+                  </button>
+                  <button onClick={() => { setIsEditingTitle(false); setTempTitle(ticket.title); }} className="p-1 text-rose-600 hover:bg-rose-50 rounded">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 group/title">
+                  <h3 className="text-xl font-bold text-neutral-900">{ticket.title}</h3>
+                  {canManage && (
+                    <button onClick={() => setIsEditingTitle(true)} className="opacity-0 group-hover/title:opacity-100 p-1 hover:bg-neutral-200 rounded transition-all">
+                      <Edit2 className="w-3 h-3 text-neutral-400" />
+                    </button>
+                  )}
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <p className="text-xs text-neutral-500 font-mono">#{ticket.ticketNumber} • ID: {ticket.id}</p>
                 {isBlocked && (
@@ -1396,25 +1612,25 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                         </div>
                         
                         <div className="flex items-center gap-2 mt-1">
-                          <select
-                            value=""
-                            onChange={(e) => e.target.value && handleUpdateTechnician(e.target.value)}
-                            className="flex-1 bg-neutral-100 border-none rounded-lg px-3 py-1.5 font-bold text-neutral-700 focus:ring-2 focus:ring-emerald-500/20 cursor-pointer text-[10px] uppercase tracking-wider"
+                          <button
+                            onClick={() => setIsAssignmentModalOpen(true)}
+                            className="flex-1 bg-neutral-900 text-white rounded-lg px-4 py-2 font-bold text-[10px] uppercase tracking-wider hover:bg-neutral-800 transition-all flex items-center justify-center gap-2 shadow-lg shadow-neutral-900/10"
                           >
-                            <option value="">+ Add Technician</option>
-                            {technicians
-                              .filter(tech => !ticket.technicianIds?.includes(tech.id))
-                              .map(tech => (
-                                <option key={tech.id} value={tech.id}>
-                                  {tech.name} ({tech.availabilityStatus || 'Available'})
-                                </option>
-                              ))
-                            }
-                          </select>
+                            <Users className="w-3.5 h-3.5" />
+                            Manage Technicians
+                          </button>
+                          <button
+                            onClick={() => setIsSuggesterModalOpen(true)}
+                            className="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-all border border-emerald-100 flex items-center gap-1 shadow-sm"
+                            title="Smart Suggestion"
+                          >
+                            <TrendingUp className="w-3.5 h-3.5" />
+                            <span className="text-[10px] font-black uppercase tracking-tighter pr-1">Suggest</span>
+                          </button>
                           {(!ticket.technicianIds || !ticket.technicianIds.includes(technicians.find(t => t.email === auth.currentUser?.email)?.id || '')) && (
                             <button
                               onClick={handleAssignToMe}
-                              className="text-[10px] font-bold uppercase text-emerald-600 hover:bg-emerald-50 px-2 py-1.5 rounded-lg transition-all border border-emerald-100 whitespace-nowrap"
+                              className="text-[10px] font-bold uppercase text-emerald-600 hover:bg-emerald-50 px-2 py-2 rounded-lg transition-all border border-emerald-100 whitespace-nowrap"
                             >
                               Assign to Me
                             </button>
@@ -1545,8 +1761,40 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                       </p>
                     </div>
                     <div className="col-span-2 space-y-1">
-                      <p className="text-xs text-neutral-500">Description</p>
-                      <p className="text-sm text-neutral-700 leading-relaxed">{ticket.description}</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-neutral-500">Description</p>
+                        {canManage && !isEditingDescription && (
+                          <button onClick={() => setIsEditingDescription(true)} className="p-1 hover:bg-neutral-100 rounded text-neutral-400 hover:text-emerald-600 transition-colors">
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                      {isEditingDescription ? (
+                        <div className="space-y-2">
+                          <div className="bg-white border border-emerald-500 rounded-xl overflow-hidden">
+                            <ReactQuill
+                              theme="snow"
+                              value={tempDescription}
+                              onChange={setTempDescription}
+                              modules={quillModules}
+                              className="bg-white"
+                            />
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <button onClick={() => { setIsEditingDescription(false); setTempDescription(ticket.description); }} className="px-3 py-1 text-xs font-bold text-neutral-500 hover:bg-neutral-100 rounded-lg">
+                              Cancel
+                            </button>
+                            <button onClick={handleUpdateDescription} className="px-3 py-1 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-lg shadow-emerald-900/20">
+                              Save Changes
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div 
+                          className="text-sm text-neutral-700 leading-relaxed prose prose-sm max-w-none"
+                          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(ticket.description || 'No description provided.') }}
+                        />
+                      )}
                     </div>
                   </div>
                 </section>
@@ -1893,28 +2141,37 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                   </h4>
                 </div>
 
-                <form onSubmit={handleAddNote} className="relative">
-                  <textarea
-                    value={newNote}
-                    onChange={(e) => setNewNote(e.target.value)}
-                    placeholder="Type a new internal note..."
-                    rows={3}
-                    className="w-full pl-4 pr-12 py-4 bg-neutral-50 border border-black/5 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all resize-none"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!newNote.trim() || isSubmitting}
-                    className="absolute right-3 bottom-3 p-2 bg-emerald-600 text-white rounded-xl disabled:opacity-50 hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20"
-                  >
-                    {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  </button>
+                <form onSubmit={handleAddNote} className="space-y-3">
+                  <div className="bg-neutral-50 border border-black/5 rounded-2xl overflow-hidden">
+                    <ReactQuill
+                      theme="snow"
+                      value={newNote}
+                      onChange={setNewNote}
+                      modules={quillModules}
+                      placeholder="Type a new internal note..."
+                      className="bg-white"
+                    />
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={!newNote.trim() || newNote === '<p><br></p>' || isSubmitting}
+                      className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20 disabled:opacity-50"
+                    >
+                      {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                      Add Note
+                    </button>
+                  </div>
                 </form>
 
                 <div className="space-y-4">
                   {notes.length > 0 ? (
                     notes.map(note => (
                       <div key={note.id} className="p-6 bg-orange-50/30 border border-orange-100/50 rounded-2xl space-y-3">
-                        <p className="text-sm text-neutral-800 leading-relaxed whitespace-pre-wrap">{note.note}</p>
+                        <div 
+                          className="text-sm text-neutral-800 leading-relaxed prose prose-sm max-w-none"
+                          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(note.note) }}
+                        />
                         <div className="flex items-center justify-between pt-2 border-t border-orange-100/30">
                           <div className="flex items-center gap-2">
                             <div className="w-6 h-6 bg-orange-100 rounded-full flex items-center justify-center">
@@ -2277,6 +2534,29 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
           />
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {isSuggesterModalOpen && (
+          <TechnicianSuggesterModal
+            ticket={ticket}
+            technicians={technicians}
+            onClose={() => setIsSuggesterModalOpen(false)}
+            onAssign={(techId) => {
+              handleUpdateTechnician(techId);
+              setIsSuggesterModalOpen(false);
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AssignmentModal
+        isOpen={isAssignmentModalOpen}
+        onClose={() => setIsAssignmentModalOpen(false)}
+        ticket={ticket}
+        technicians={technicians}
+        allTickets={allTickets}
+        onUpdateTechnician={(_, techId) => handleUpdateTechnician(techId)}
+      />
     </div>
   );
 }

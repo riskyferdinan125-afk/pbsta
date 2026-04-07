@@ -1,20 +1,27 @@
 import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, limit, orderBy, doc, getDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Ticket, Customer } from '../types';
+import { Ticket, Customer, UserProfile, RepairRecord } from '../types';
 import { 
   Ticket as TicketIcon, 
   CheckCircle2, 
   Clock, 
   AlertCircle,
   TrendingUp,
-  Users
+  Users,
+  Star,
+  Award,
+  ChevronRight
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
 import SeedDataButton from './SeedDataButton';
 
-export default function Dashboard() {
+interface DashboardProps {
+  onNavigate?: (view: any) => void;
+}
+
+export default function Dashboard({ onNavigate }: DashboardProps) {
   const [stats, setStats] = useState({
     total: 0,
     open: 0,
@@ -28,6 +35,13 @@ export default function Dashboard() {
     onLeave: 0
   });
   const [recentTickets, setRecentTickets] = useState<(Ticket & { customerName?: string })[]>([]);
+  const [topTechnicians, setTopTechnicians] = useState<{
+    id: string;
+    name: string;
+    completed: number;
+    avgTime: number;
+    rating: number;
+  }[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchStats = async () => {
@@ -35,6 +49,9 @@ export default function Dashboard() {
       const ticketsSnap = await getDocs(collection(db, 'tickets'));
       const tickets = ticketsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket));
       
+      const recordsSnap = await getDocs(collection(db, 'repairRecords'));
+      const records = recordsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RepairRecord));
+
       setStats({
         total: tickets.length,
         open: tickets.filter(t => t.status === 'open').length,
@@ -44,13 +61,36 @@ export default function Dashboard() {
 
       const techQuery = query(collection(db, 'users'), where('role', '==', 'teknisi'));
       const techsSnap = await getDocs(techQuery);
-      const techs = techsSnap.docs.map(doc => doc.data());
+      const techs = techsSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
+      
       setTechStats({
         total: techs.length,
         available: techs.filter(t => t.availabilityStatus === 'Available').length,
         busy: techs.filter(t => t.availabilityStatus === 'Busy').length,
         onLeave: techs.filter(t => t.availabilityStatus === 'On Leave').length
       });
+
+      // Calculate Top Technicians
+      const techPerformance = techs.map(tech => {
+        const techTickets = tickets.filter(t => t.technicianIds?.includes(tech.uid));
+        const completed = techTickets.filter(t => t.status === 'resolved' || t.status === 'closed');
+        
+        const totalTime = completed.reduce((sum, t) => sum + (t.totalTimeSpent || 0), 0);
+        const totalRating = completed.reduce((sum, t) => sum + (t.rating || 0), 0);
+        const ratedCount = completed.filter(t => t.rating && t.rating > 0).length;
+
+        return {
+          id: tech.uid,
+          name: tech.name,
+          completed: completed.length,
+          avgTime: completed.length > 0 ? Math.round(totalTime / completed.length) : 0,
+          rating: ratedCount > 0 ? Number((totalRating / ratedCount).toFixed(1)) : 0
+        };
+      })
+      .sort((a, b) => b.completed - a.completed || b.rating - a.rating)
+      .slice(0, 4);
+
+      setTopTechnicians(techPerformance);
 
       const recentQuery = query(collection(db, 'tickets'), orderBy('createdAt', 'desc'), limit(5));
       const recentSnap = await getDocs(recentQuery);
@@ -120,43 +160,101 @@ export default function Dashboard() {
 
       {/* Recent Activity & Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-black/5 flex items-center justify-between">
-            <h3 className="font-bold text-neutral-900">Recent Tickets</h3>
-            <button className="text-sm text-emerald-600 font-medium hover:underline">View All</button>
+        <div className="lg:col-span-2 space-y-8">
+          <div className="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-black/5 flex items-center justify-between">
+              <h3 className="font-bold text-neutral-900">Recent Tickets</h3>
+              <button 
+                onClick={() => onNavigate?.('tickets')}
+                className="text-sm text-emerald-600 font-medium hover:underline"
+              >
+                View All
+              </button>
+            </div>
+            <div className="divide-y divide-black/5">
+              {recentTickets.length > 0 ? recentTickets.map((ticket) => (
+                <div key={ticket.id} className="p-6 flex items-center justify-between hover:bg-neutral-50 transition-colors">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                      ticket.status === 'open' ? 'bg-orange-100 text-orange-600' :
+                      ticket.status === 'in-progress' ? 'bg-emerald-100 text-emerald-600' :
+                      'bg-purple-100 text-purple-600'
+                    }`}>
+                      <TicketIcon className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-neutral-900">{ticket.customerName}</p>
+                      <p className="text-sm text-neutral-500 truncate max-w-xs">{ticket.description}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className={`text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-full ${
+                      ticket.priority === 'urgent' ? 'bg-red-100 text-red-600' :
+                      ticket.priority === 'high' ? 'bg-orange-100 text-orange-600' :
+                      'bg-neutral-100 text-neutral-600'
+                    }`}>
+                      {ticket.priority}
+                    </span>
+                    <p className="text-xs text-neutral-400 mt-1">
+                      {ticket.createdAt instanceof Timestamp ? ticket.createdAt.toDate().toLocaleDateString() : 'No date'}
+                    </p>
+                  </div>
+                </div>
+              )) : (
+                <div className="p-12 text-center text-neutral-500">No recent tickets found.</div>
+              )}
+            </div>
           </div>
-          <div className="divide-y divide-black/5">
-            {recentTickets.length > 0 ? recentTickets.map((ticket) => (
-              <div key={ticket.id} className="p-6 flex items-center justify-between hover:bg-neutral-50 transition-colors">
-                <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                    ticket.status === 'open' ? 'bg-orange-100 text-orange-600' :
-                    ticket.status === 'in-progress' ? 'bg-emerald-100 text-emerald-600' :
-                    'bg-purple-100 text-purple-600'
-                  }`}>
-                    <TicketIcon className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-neutral-900">{ticket.customerName}</p>
-                    <p className="text-sm text-neutral-500 truncate max-w-xs">{ticket.description}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <span className={`text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-full ${
-                    ticket.priority === 'urgent' ? 'bg-red-100 text-red-600' :
-                    ticket.priority === 'high' ? 'bg-orange-100 text-orange-600' :
-                    'bg-neutral-100 text-neutral-600'
-                  }`}>
-                    {ticket.priority}
-                  </span>
-                  <p className="text-xs text-neutral-400 mt-1">
-                    {ticket.createdAt instanceof Timestamp ? ticket.createdAt.toDate().toLocaleDateString() : 'No date'}
-                  </p>
-                </div>
+
+          {/* Top Performers Section */}
+          <div className="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-black/5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Award className="w-5 h-5 text-amber-500" />
+                <h3 className="font-bold text-neutral-900">Top Performing Technicians</h3>
               </div>
-            )) : (
-              <div className="p-12 text-center text-neutral-500">No recent tickets found.</div>
-            )}
+              <button 
+                onClick={() => onNavigate?.('productivity')}
+                className="text-sm text-emerald-600 font-medium hover:underline"
+              >
+                Full Report
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {topTechnicians.map((tech, idx) => (
+                  <div key={tech.id} className="p-4 bg-neutral-50 rounded-2xl border border-black/5 hover:border-emerald-200 transition-all group">
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="w-12 h-12 rounded-full bg-white border border-black/5 flex items-center justify-center text-xl font-black text-neutral-900 shadow-sm">
+                        {idx + 1}
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-neutral-900">{tech.name}</h4>
+                        <div className="flex items-center gap-1 text-amber-500">
+                          <Star className="w-3 h-3 fill-current" />
+                          <span className="text-xs font-bold">{tech.rating || 'N/A'}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-white p-2 rounded-xl border border-black/5">
+                        <p className="text-[10px] font-bold text-neutral-400 uppercase">Completed</p>
+                        <p className="text-lg font-black text-emerald-600">{tech.completed}</p>
+                      </div>
+                      <div className="bg-white p-2 rounded-xl border border-black/5">
+                        <p className="text-[10px] font-bold text-neutral-400 uppercase">Avg Time</p>
+                        <p className="text-lg font-black text-neutral-900">{tech.avgTime}m</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {topTechnicians.length === 0 && (
+                  <div className="col-span-full py-8 text-center text-neutral-500 italic">
+                    No performance data available yet.
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 

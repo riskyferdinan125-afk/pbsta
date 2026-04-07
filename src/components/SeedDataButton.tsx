@@ -59,6 +59,8 @@ export default function SeedDataButton() {
           phone: '081122334455',
           role: 'Field Technician',
           availabilityStatus: 'Available',
+          skills: ['Fiber Optic', 'Installation', 'ONT', 'Pasang Baru'],
+          specialization: 'PSB',
           workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
           workingHours: '08:00 - 17:00'
         },
@@ -69,6 +71,8 @@ export default function SeedDataButton() {
           phone: '081199887766',
           role: 'Senior Technician',
           availabilityStatus: 'Busy',
+          skills: ['Troubleshooting', 'Repair', 'Maintenance', 'Gangguan'],
+          specialization: 'UNSPEKS',
           workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
           workingHours: '09:00 - 18:00'
         },
@@ -79,6 +83,8 @@ export default function SeedDataButton() {
           phone: '081155667788',
           role: 'Support Specialist',
           availabilityStatus: 'Available',
+          skills: ['Business', 'Enterprise', 'Dedicated', 'Korporat'],
+          specialization: 'EXBIS',
           workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
           workingHours: '08:00 - 16:00'
         },
@@ -89,6 +95,8 @@ export default function SeedDataButton() {
           phone: '081234567890',
           role: 'Field Support',
           availabilityStatus: 'Available',
+          skills: ['Project', 'Infrastructure', 'Planning', 'Pembangunan'],
+          specialization: 'PROJECT',
           workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
           workingHours: '08:00 - 17:00'
         }

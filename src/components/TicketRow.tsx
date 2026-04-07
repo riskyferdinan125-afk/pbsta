@@ -1,5 +1,6 @@
 import React from 'react';
 import { Ticket, Customer, TicketStatus, TicketPriority, Technician } from '../types';
+import { stripHtml } from '../lib/textUtils';
 import { 
   Tag,
   Info,
@@ -45,6 +46,8 @@ interface TicketRowProps {
   getPriorityColor: (priority: TicketPriority) => string;
   getSLAStatus: (ticket: Ticket) => 'within-sla' | 'near-breach' | 'breached';
   tickets: Ticket[];
+  isTechnician: boolean;
+  myTechnicianId?: string;
 }
 
 export default function TicketRow({
@@ -68,7 +71,9 @@ export default function TicketRow({
   getStatusColor,
   getPriorityColor,
   getSLAStatus,
-  tickets
+  tickets,
+  isTechnician,
+  myTechnicianId
 }: TicketRowProps) {
   const resolvePhotoUrl = (url: string) => {
     if (!url) return '';
@@ -154,7 +159,7 @@ export default function TicketRow({
         </div>
       </td>
       <td className="px-6 py-4">
-        <p className="text-sm text-neutral-600 line-clamp-1 max-w-[200px]">{ticket.description}</p>
+        <p className="text-sm text-neutral-600 line-clamp-1 max-w-[200px]">{stripHtml(ticket.description)}</p>
       </td>
       <td className="px-6 py-4">
         <div className="relative inline-block group/status">
@@ -302,6 +307,16 @@ export default function TicketRow({
       </td>
       <td className="px-6 py-4 text-right">
         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          {isTechnician && myTechnicianId && !ticket.technicianIds?.includes(myTechnicianId) && (
+            <button
+              onClick={() => handleAssignToMe(ticket.id)}
+              className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all shadow-sm text-[10px] font-bold uppercase tracking-wider"
+              title="Assign to Me"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Assign to Me</span>
+            </button>
+          )}
           {(!ticket.technicianIds || ticket.technicianIds.length === 0) && (
             <button
               onClick={() => handleSmartAssign(ticket.id)}
@@ -309,15 +324,6 @@ export default function TicketRow({
               title="Smart Assign"
             >
               <Zap className="w-4 h-4" />
-            </button>
-          )}
-          {(!ticket.technicianIds || ticket.technicianIds.length === 0) && (
-            <button
-              onClick={() => handleAssignToMe(ticket.id)}
-              className="p-2 hover:bg-emerald-50 text-emerald-600 rounded-lg"
-              title="Assign to Me"
-            >
-              <UserPlus className="w-4 h-4" />
             </button>
           )}
           <button 

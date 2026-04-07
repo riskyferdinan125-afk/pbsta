@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
+import { Timestamp, collection, getDocs, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import { RepairRecord, Technician, MaterialUsage, Ticket, UserProfile, Report as ReportType } from '../types';
+import { RepairRecord, Technician, MaterialUsage, Ticket, UserProfile, Customer, Report as ReportType } from '../types';
 import { calculateTicketPoints } from '../weights';
 import { generateReport, getPeriodDates } from '../lib/reportService';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend, LineChart, Line, AreaChart, Area } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend, LineChart, Line, AreaChart, Area, ScatterChart, Scatter, ZAxis } from 'recharts';
 import { Download, Filter, Calendar, Receipt, User as UserIcon, CheckCircle, AlertTriangle, XCircle, Star, Map as MapIcon, TrendingUp, Clock, Package, FileText, Plus, History } from 'lucide-react';
 import { APIProvider, Map, useMap } from '@vis.gl/react-google-maps';
 import { GoogleMapsOverlay } from '@deck.gl/google-maps';
@@ -37,11 +37,15 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
   const [repairRecords, setRepairRecords] = useState<RepairRecord[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [generatedReports, setGeneratedReports] = useState<ReportType[]>([]);
+  const [satisfactionTrendData, setSatisfactionTrendData] = useState<{ date: string; rating: number }[]>([]);
+  const [slaTrendData, setSlaTrendData] = useState<{ date: string; compliance: number }[]>([]);
+  const [materialEfficiencyData, setMaterialEfficiencyData] = useState<{ name: string; quantity: number; totalCost: number; efficiency: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showOnlyMe, setShowOnlyMe] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'technicians' | 'productivity' | 'materials' | 'heatmap' | 'history'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'trends' | 'technicians' | 'productivity' | 'materials' | 'heatmap' | 'history'>('overview');
   const [dateRange, setDateRange] = useState<'daily' | 'weekly' | 'monthly' | 'all'>('all');
 
   const myTechnician = technicians.find(t => t.email === profile?.email);
@@ -88,11 +92,13 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
       const techQuery = query(collection(db, 'users'), where('role', '==', 'teknisi'));
       const techsSnap = await getDocs(techQuery);
       const ticketsSnap = await getDocs(collection(db, 'tickets'));
+      const customersSnap = await getDocs(collection(db, 'customers'));
       const reportsSnap = await getDocs(query(collection(db, 'reports'), orderBy('createdAt', 'desc')));
       
       setRepairRecords(recordsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RepairRecord)));
       setTechnicians(techsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Technician)));
       setTickets(ticketsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket)));
+      setCustomers(customersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
       setGeneratedReports(reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ReportType)));
       setLoading(false);
     }
@@ -128,6 +134,7 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
       let totalChecklistItems = 0;
       let completedChecklistItems = 0;
       let resolvedCount = 0;
+      let withinSLACount = 0;
       
       techTickets.forEach(t => {
         // Find the closing technician (the one who submitted the latest repair record)
@@ -147,6 +154,10 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
 
         if (isCloser) {
           resolvedCount++;
+          
+          if (t.slaStatus === 'within-sla') {
+            withinSLACount++;
+          }
           
           // Use the stored points if available, otherwise calculate them
           const points = t.points !== undefined ? t.points : calculateTicketPoints(t.category, t.subCategory);
@@ -174,6 +185,7 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
       const avgResolutionTime = validTickets > 0 ? (totalResolutionTime / validTickets / (1000 * 60 * 60)) : 0;
       const avgWorkTime = techTickets.length > 0 ? (totalWorkTime / techTickets.length) : 0;
       const checklistCompletionRate = totalChecklistItems > 0 ? (completedChecklistItems / totalChecklistItems * 100) : 0;
+      const slaComplianceRate = resolvedCount > 0 ? (withinSLACount / resolvedCount * 100) : 0;
       
       return {
         id: tech.id,
@@ -184,7 +196,8 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
         points: totalPoints,
         avgResolutionTime: parseFloat(avgResolutionTime.toFixed(1)),
         avgWorkTime: parseFloat(avgWorkTime.toFixed(1)),
-        checklistRate: parseFloat(checklistCompletionRate.toFixed(1))
+        checklistRate: parseFloat(checklistCompletionRate.toFixed(1)),
+        slaComplianceRate: parseFloat(slaComplianceRate.toFixed(1))
       };
     }).filter(d => d.assigned > 0 || d.completed > 0 || d.avgResolutionTime > 0);
 
@@ -194,17 +207,61 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
 
   // Fallback for demo purposes if no data exists
   const chartData = filteredProductivityData.length > 0 ? filteredProductivityData : [
-    { id: '1', name: 'Alex Rivera', nik: 'NIK001', assigned: 30, completed: 24, points: 72, avgResolutionTime: 4.2, avgWorkTime: 45, checklistRate: 95 },
-    { id: '2', name: 'Sarah Chen', nik: 'NIK002', assigned: 35, completed: 31, points: 93, avgResolutionTime: 3.5, avgWorkTime: 38, checklistRate: 98 },
-    { id: '3', name: 'Marcus Thorne', nik: 'NIK003', assigned: 25, completed: 18, points: 54, avgResolutionTime: 6.1, avgWorkTime: 55, checklistRate: 88 },
-    { id: '4', name: 'Elena Vance', nik: 'NIK004', assigned: 32, completed: 27, points: 81, avgResolutionTime: 4.8, avgWorkTime: 42, checklistRate: 92 },
-    { id: '5', name: 'Jordan Hayes', nik: 'NIK005', assigned: 28, completed: 22, points: 66, avgResolutionTime: 5.2, avgWorkTime: 48, checklistRate: 90 },
-    { id: '6', name: 'Sam Taylor', nik: 'NIK006', assigned: 20, completed: 15, points: 45, avgResolutionTime: 7.4, avgWorkTime: 62, checklistRate: 85 },
-    { id: '7', name: 'Chris Evans', nik: 'NIK007', assigned: 34, completed: 29, points: 87, avgResolutionTime: 3.9, avgWorkTime: 40, checklistRate: 96 },
+    { id: '1', name: 'Alex Rivera', nik: 'NIK001', assigned: 30, completed: 24, points: 72, avgResolutionTime: 4.2, avgWorkTime: 45, checklistRate: 95, slaComplianceRate: 92 },
+    { id: '2', name: 'Sarah Chen', nik: 'NIK002', assigned: 35, completed: 31, points: 93, avgResolutionTime: 3.5, avgWorkTime: 38, checklistRate: 98, slaComplianceRate: 96 },
+    { id: '3', name: 'Marcus Thorne', nik: 'NIK003', assigned: 25, completed: 18, points: 54, avgResolutionTime: 6.1, avgWorkTime: 55, checklistRate: 88, slaComplianceRate: 85 },
+    { id: '4', name: 'Elena Vance', nik: 'NIK004', assigned: 32, completed: 27, points: 81, avgResolutionTime: 4.8, avgWorkTime: 42, checklistRate: 92, slaComplianceRate: 89 },
+    { id: '5', name: 'Jordan Hayes', nik: 'NIK005', assigned: 28, completed: 22, points: 66, avgResolutionTime: 5.2, avgWorkTime: 48, checklistRate: 90, slaComplianceRate: 88 },
+    { id: '6', name: 'Sam Taylor', nik: 'NIK006', assigned: 20, completed: 15, points: 45, avgResolutionTime: 7.4, avgWorkTime: 62, checklistRate: 85, slaComplianceRate: 82 },
+    { id: '7', name: 'Chris Evans', nik: 'NIK007', assigned: 34, completed: 29, points: 87, avgResolutionTime: 3.9, avgWorkTime: 40, checklistRate: 96, slaComplianceRate: 94 },
   ];
 
+  // Ticket Trends (Daily)
+  const dailyTrendMap: Record<string, { date: string, count: number, resolved: number }> = {};
+  const materialCostTrendMap: Record<string, number> = {};
+  
+  filteredTickets.forEach(t => {
+    const date = t.createdAt?.toDate().toLocaleDateString() || 'Unknown';
+    if (!dailyTrendMap[date]) {
+      dailyTrendMap[date] = { date, count: 0, resolved: 0 };
+    }
+    dailyTrendMap[date].count++;
+    if (t.status === 'resolved' || t.status === 'closed') {
+      dailyTrendMap[date].resolved++;
+    }
+  });
+
+  filteredRepairRecords.forEach(r => {
+    const date = r.createdAt?.toDate().toLocaleDateString() || 'Unknown';
+    const cost = r.materialsUsed?.reduce((acc, m) => acc + (m.quantity * m.unitPrice), 0) || 0;
+    materialCostTrendMap[date] = (materialCostTrendMap[date] || 0) + cost;
+  });
+
+  const dailyTrendData = Object.values(dailyTrendMap).sort((a, b) => 
+    new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
+
+  const materialCostTrendData = Object.entries(materialCostTrendMap)
+    .map(([date, cost]) => ({ date, cost }))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  // Location Trends
+  const locationCountMap: Record<string, { address: string, count: number, lat?: number, lng?: number }> = {};
+  filteredTickets.forEach(t => {
+    const customer = customers.find(c => c.id === t.customerId);
+    const address = customer?.address || 'Unknown Address';
+    if (!locationCountMap[address]) {
+      locationCountMap[address] = { address, count: 0 };
+    }
+    locationCountMap[address].count++;
+  });
+
+  const locationTrendData = Object.values(locationCountMap)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
   // Material Usage: Total quantity per material
-  const materialUsageMap: Record<string, { name: string, quantity: number }> = {};
+  const materialUsageMap: Record<string, { name: string, quantity: number, totalCost: number }> = {};
   
   // Cost per ticket calculation
   const ticketCostMap: Record<string, { ticketNumber: number, cost: number }> = {};
@@ -226,13 +283,70 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
 
       if (materialUsageMap[usage.materialId]) {
         materialUsageMap[usage.materialId].quantity += usage.quantity;
+        materialUsageMap[usage.materialId].totalCost += cost;
       } else {
-        materialUsageMap[usage.materialId] = { name: usage.name, quantity: usage.quantity };
+        materialUsageMap[usage.materialId] = { name: usage.name, quantity: usage.quantity, totalCost: cost };
       }
     });
   });
   const materialData = Object.values(materialUsageMap).sort((a, b) => b.quantity - a.quantity);
   const topMaterial = materialData[0] || { name: 'None', quantity: 0 };
+
+  // Satisfaction Trend
+  useEffect(() => {
+    if (tickets.length === 0) return;
+    
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      return d;
+    });
+
+    const satisfactionTrend = days.map(day => {
+      const dayTickets = tickets.filter(t => {
+        const date = t.createdAt instanceof Timestamp ? t.createdAt.toDate() : null;
+        return date && date.toDateString() === day.toDateString();
+      });
+      const ratedTickets = dayTickets.filter(t => t.rating && t.rating > 0);
+      const avgRating = ratedTickets.length > 0 
+        ? ratedTickets.reduce((sum, t) => sum + (t.rating || 0), 0) / ratedTickets.length 
+        : 0;
+      return {
+        date: day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+        rating: Number(avgRating.toFixed(1))
+      };
+    });
+    setSatisfactionTrendData(satisfactionTrend);
+
+    // SLA Trend
+    const slaTrend = days.map(day => {
+      const dayTickets = tickets.filter(t => {
+        const date = t.createdAt instanceof Timestamp ? t.createdAt.toDate() : null;
+        return date && date.toDateString() === day.toDateString();
+      });
+      const resolvedInDay = dayTickets.filter(t => t.status === 'resolved' || t.status === 'closed');
+      const compliant = resolvedInDay.filter(t => {
+        if (!t.slaDeadline || !t.resolvedAt) return true;
+        return t.resolvedAt.toMillis() <= t.slaDeadline.toMillis();
+      });
+      const complianceRate = resolvedInDay.length > 0 
+        ? (compliant.length / resolvedInDay.length) * 100 
+        : 100;
+      return {
+        date: day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+        compliance: Math.round(complianceRate)
+      };
+    });
+    setSlaTrendData(slaTrend);
+
+    // Material Efficiency
+    const efficiency = materialData.map(m => ({
+      ...m,
+      efficiency: m.quantity > 0 ? m.totalCost / m.quantity : 0
+    })).sort((a, b) => b.totalCost - a.totalCost);
+    setMaterialEfficiencyData(efficiency);
+  }, [tickets, materialData]);
+
   const topTechnician = [...chartData].sort((a, b) => b.points - a.points)[0] || { name: 'None', points: 0 };
   const ticketCostData = Object.entries(ticketCostMap).map(([id, data]) => ({ id, ...data }));
 
@@ -398,9 +512,9 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
     
     // Technician Productivity Section
     csvContent += "TECHNICIAN PRODUCTIVITY\n";
-    csvContent += "Technician Name,Tickets Assigned,Tickets Completed,Performance Points,Avg Resolution Time (hrs)\n";
+    csvContent += "Technician Name,Tickets Assigned,Tickets Completed,Performance Points,Avg Resolution Time (hrs),Checklist Rate (%),SLA Rate (%)\n";
     chartData.forEach(row => {
-      csvContent += `${row.name},${row.assigned || 0},${row.completed},${row.points},${row.avgResolutionTime}\n`;
+      csvContent += `${row.name},${row.assigned || 0},${row.completed},${row.points},${row.avgResolutionTime},${row.checklistRate},${row.slaComplianceRate}\n`;
     });
     
     csvContent += "\n"; // Spacer
@@ -497,20 +611,20 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
     doc.text("Technician Performance", 14, (doc as any).lastAutoTable.finalY + 15);
     const techTableData = chartData.map(t => {
       const techMat = techMaterialData.find(m => m.name === t.name);
-      const techSat = satisfactionData.find(s => s.name === t.name);
       return [
         t.name, 
         t.completed.toString(), 
         t.points.toFixed(1), 
         `${t.avgResolutionTime}h`,
         techMat?.totalMaterials.toString() || "0",
-        techSat?.rating.toString() || "N/A"
+        `${t.checklistRate}%`,
+        `${t.slaComplianceRate}%`
       ];
     });
     
     doc.autoTable({
       startY: (doc as any).lastAutoTable.finalY + 20,
-      head: [["Technician", "Completed", "Points", "Avg Time", "Materials", "Rating"]],
+      head: [["Technician", "Completed", "Points", "Avg Time", "Materials", "Checklist", "SLA Rate"]],
       body: techTableData,
       theme: 'grid',
       headStyles: { fillColor: [59, 130, 246] }
@@ -671,12 +785,12 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 p-1 bg-neutral-100 rounded-2xl w-fit">
-        {(['overview', 'technicians', 'productivity', 'materials', 'heatmap', 'history'] as const).map(tab => (
+      <div className="flex items-center gap-2 p-1 bg-neutral-100 rounded-2xl w-fit overflow-x-auto max-w-full">
+        {(['overview', 'trends', 'technicians', 'productivity', 'materials', 'heatmap', 'history'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${
+            className={`px-6 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
               activeTab === tab 
                 ? 'bg-white text-neutral-900 shadow-sm' 
                 : 'text-neutral-500 hover:text-neutral-700'
@@ -895,6 +1009,23 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="bg-white p-6 rounded-2xl border border-black/5 shadow-sm">
+              <h3 className="text-lg font-bold text-neutral-900 mb-6">Repair Effectiveness</h3>
+              <div className="h-80 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#737373' }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#737373' }} domain={[0, 100]} />
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                    <Legend verticalAlign="top" height={36} iconType="circle" />
+                    <Bar dataKey="checklistRate" name="Checklist Completion (%)" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
+                    <Bar dataKey="slaComplianceRate" name="SLA Compliance (%)" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={20} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-2xl border border-black/5 shadow-sm">
               <h3 className="text-lg font-bold text-neutral-900 mb-6">Avg Resolution Time by Category</h3>
               <div className="h-80 w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -940,6 +1071,7 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
                     <th className="px-6 py-4 text-center">Avg. Time</th>
                     <th className="px-6 py-4 text-center">Materials</th>
                     <th className="px-6 py-4 text-center">Checklist</th>
+                    <th className="px-6 py-4 text-center">SLA Rate</th>
                     <th className="px-6 py-4 text-center">Satisfaction</th>
                   </tr>
                 </thead>
@@ -961,6 +1093,7 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
                         <td className="px-6 py-4 text-center text-neutral-600 font-mono">{tech.avgResolutionTime}h</td>
                         <td className="px-6 py-4 text-center text-neutral-600 font-mono">{techMat?.totalMaterials || 0}</td>
                         <td className="px-6 py-4 text-center text-neutral-600 font-mono">{tech.checklistRate}%</td>
+                        <td className="px-6 py-4 text-center text-neutral-600 font-mono">{tech.slaComplianceRate}%</td>
                         <td className="px-6 py-4 text-center">
                           <div className="flex items-center justify-center gap-1">
                             <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
@@ -1093,6 +1226,98 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
         </div>
       )}
 
+      {activeTab === 'trends' && (
+        <div className="space-y-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm">
+              <h3 className="text-lg font-bold text-neutral-900 mb-6 flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-emerald-500" />
+                Ticket Volume Trends
+              </h3>
+              <div className="h-80 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={dailyTrendData}>
+                    <defs>
+                      <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                      </linearGradient>
+                      <linearGradient id="colorResolved" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#737373' }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#737373' }} />
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                    <Legend />
+                    <Area type="monotone" dataKey="count" name="Total Tickets" stroke="#3b82f6" fillOpacity={1} fill="url(#colorCount)" />
+                    <Area type="monotone" dataKey="resolved" name="Resolved" stroke="#10b981" fillOpacity={1} fill="url(#colorResolved)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm">
+              <h3 className="text-lg font-bold text-neutral-900 mb-6 flex items-center gap-2">
+                <MapIcon className="w-5 h-5 text-indigo-500" />
+                Top Trouble Locations
+              </h3>
+              <div className="h-80 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={locationTrendData} layout="vertical" margin={{ left: 40 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
+                    <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#737373' }} />
+                    <YAxis dataKey="address" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#737373' }} width={120} />
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                    <Bar dataKey="count" name="Tickets" fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={20} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm">
+              <h3 className="text-lg font-bold text-neutral-900 mb-6 flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-500" />
+                Trouble Type Distribution (Sub-categories)
+              </h3>
+              <div className="h-80 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={subCategoryData.slice(0, 10)} margin={{ bottom: 40 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis dataKey="name" angle={-45} textAnchor="end" interval={0} axisLine={false} tickLine={false} tick={{ fontSize: 8, fill: '#737373' }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#737373' }} />
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                    <Bar dataKey="value" name="Tickets" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={20} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm">
+              <h3 className="text-lg font-bold text-neutral-900 mb-6 flex items-center gap-2">
+                <Star className="w-5 h-5 text-yellow-500" />
+                Satisfaction Trend
+              </h3>
+              <div className="h-80 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={satisfactionTrendData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#737373' }} />
+                    <YAxis domain={[0, 5]} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#737373' }} />
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                    <Line type="monotone" dataKey="rating" name="Avg Rating" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4, fill: '#f59e0b' }} activeDot={{ r: 6 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'materials' && (
         <div className="space-y-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -1122,13 +1347,36 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
             </div>
 
             <div className="bg-white p-6 rounded-2xl border border-black/5 shadow-sm">
+              <h3 className="text-lg font-bold text-neutral-900 mb-6">Material Cost vs. Quantity</h3>
+              <div className="h-80 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis type="number" dataKey="quantity" name="Quantity" unit=" units" axisLine={false} tickLine={false} />
+                    <YAxis type="number" dataKey="totalCost" name="Total Cost" unit=" Rp" axisLine={false} tickLine={false} />
+                    <ZAxis type="number" dataKey="efficiency" range={[50, 400]} name="Cost per Unit" />
+                    <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+                    <Legend />
+                    <Scatter name="Materials" data={materialEfficiencyData} fill="#8b5cf6">
+                      {materialEfficiencyData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Scatter>
+                  </ScatterChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-1 bg-white p-6 rounded-2xl border border-black/5 shadow-sm">
               <h3 className="text-lg font-bold text-neutral-900 mb-6">Material Cost Summary</h3>
               <div className="space-y-6">
                 <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100">
                   <p className="text-sm text-amber-800 font-medium mb-1">Total Material Expenditure</p>
                   <h4 className="text-3xl font-black text-amber-900">Rp {grandTotalCost.toLocaleString()}</h4>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4">
                   <div className="p-4 bg-neutral-50 rounded-2xl border border-black/5">
                     <p className="text-xs text-neutral-500 font-bold uppercase tracking-wider mb-1">Avg Cost/Ticket</p>
                     <h5 className="text-xl font-black text-neutral-900">
@@ -1142,42 +1390,31 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
                 </div>
               </div>
             </div>
-          </div>
 
-          <div className="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-black/5">
-              <h3 className="font-bold text-neutral-900">Material Cost Per Ticket</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-neutral-50 text-neutral-500 text-xs font-bold uppercase tracking-wider">
-                    <th className="px-6 py-4">Ticket #</th>
-                    <th className="px-6 py-4">Total Cost</th>
-                    <th className="px-6 py-4">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-black/5">
-                  {ticketCostData.map((row) => {
-                    const ticket = tickets.find(t => t.id === row.id);
-                    return (
-                      <tr key={row.id} className="hover:bg-neutral-50 transition-colors">
-                        <td className="px-6 py-4 font-medium text-neutral-900">#{row.ticketNumber}</td>
-                        <td className="px-6 py-4 text-neutral-600 font-mono">Rp {row.cost.toLocaleString()}</td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            ticket?.status === 'closed' ? 'bg-neutral-100 text-neutral-600' :
-                            ticket?.status === 'resolved' ? 'bg-emerald-100 text-emerald-600' :
-                            'bg-amber-100 text-amber-600'
-                          }`}>
-                            {ticket?.status.replace('-', ' ') || 'Unknown'}
-                          </span>
-                        </td>
+            <div className="lg:col-span-2 bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
+              <div className="p-6 border-b border-black/5">
+                <h3 className="font-bold text-neutral-900">Material Usage Breakdown</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-neutral-50 text-neutral-500 text-xs font-bold uppercase tracking-wider">
+                      <th className="px-6 py-4">Material Name</th>
+                      <th className="px-6 py-4 text-center">Quantity</th>
+                      <th className="px-6 py-4 text-right">Total Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-black/5">
+                    {materialData.map((row) => (
+                      <tr key={row.name} className="hover:bg-neutral-50 transition-colors">
+                        <td className="px-6 py-4 font-medium text-neutral-900">{row.name}</td>
+                        <td className="px-6 py-4 text-center text-neutral-600 font-mono">{row.quantity}</td>
+                        <td className="px-6 py-4 text-right text-neutral-600 font-mono">Rp {row.totalCost.toLocaleString()}</td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
@@ -1186,6 +1423,28 @@ export default function Reports({ profile }: { profile: UserProfile | null }) {
       {activeTab === 'overview' && (
         <div className="space-y-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* SLA Compliance Trend Chart */}
+            <div className="bg-white p-6 rounded-2xl border border-black/5 shadow-sm">
+              <h3 className="text-lg font-bold text-neutral-900 mb-6">SLA Compliance Trend (%)</h3>
+              <div className="h-80 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={slaTrendData}>
+                    <defs>
+                      <linearGradient id="colorSla" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#737373' }} />
+                    <YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#737373' }} />
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                    <Area type="monotone" dataKey="compliance" name="Compliance %" stroke="#10b981" fillOpacity={1} fill="url(#colorSla)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
             {/* Ticket Status Distribution */}
             <div className="bg-white p-6 rounded-2xl border border-black/5 shadow-sm">
               <h3 className="text-lg font-bold text-neutral-900 mb-6">Ticket Status</h3>

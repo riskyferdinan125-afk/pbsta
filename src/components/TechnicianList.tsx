@@ -3,7 +3,7 @@ import { collection, onSnapshot, addDoc, updateDoc, doc, deleteDoc, writeBatch, 
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, handleFirestoreError, OperationType } from '../firebase';
 import { Technician, AvailabilityStatus, UserProfile } from '../types';
-import { Plus, Search, Wrench, Mail, Phone, Briefcase, Edit2, Trash2, X, Calendar, Camera, Upload, Activity, Eye, MapPin, User, Zap } from 'lucide-react';
+import { Plus, Search, Wrench, Mail, Phone, Briefcase, Edit2, Trash2, X, Calendar, Camera, Upload, Activity, Eye, MapPin, User, Zap, Lock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow } from '@vis.gl/react-google-maps';
 import ConfirmationModal from './ConfirmationModal';
@@ -47,13 +47,18 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
     nik: '',
     email: '',
     phone: '',
-    role: '',
+    telegramId: '',
+    address: '',
+    title: '',
+    role: 'teknisi',
+    password: '',
     photoURL: '',
     availabilityStatus: 'Available' as any,
     workingDays: [] as string[],
     workingHours: '',
     skills: '',
-    specialization: ''
+    specialization: '',
+    bio: ''
   });
 
   const [error, setError] = useState<string | null>(null);
@@ -85,11 +90,16 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
 
     try {
       const skillsArray = formData.skills.split(',').map(s => s.trim()).filter(Boolean);
-      const dataToSave = {
-        ...formData,
+      const { password, ...otherData } = formData;
+      const dataToSave: any = {
+        ...otherData,
         skills: skillsArray,
         updatedAt: serverTimestamp()
       };
+
+      if (password) {
+        dataToSave.password = password;
+      }
 
       if (editingTech) {
         await updateDoc(doc(db, 'users', editingTech.id), dataToSave);
@@ -97,7 +107,6 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
       } else {
         await addDoc(collection(db, 'users'), {
           ...dataToSave,
-          role: 'teknisi',
           createdAt: serverTimestamp()
         });
         showToast('Technician added successfully', 'success');
@@ -193,17 +202,22 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
         nik: tech.nik || '',
         email: tech.email,
         phone: tech.phone || '',
-        role: tech.role || '',
+        telegramId: tech.telegramId || '',
+        address: tech.address || '',
+        title: tech.title || '',
+        role: tech.role || 'teknisi',
+        password: '',
         photoURL: tech.photoURL || '',
         availabilityStatus: tech.availabilityStatus || 'Available',
         workingDays: tech.workingDays || [],
         workingHours: tech.workingHours || '',
         skills: tech.skills?.join(', ') || '',
-        specialization: tech.specialization || ''
+        specialization: tech.specialization || '',
+        bio: tech.bio || ''
       });
     } else {
       setEditingTech(null);
-      setFormData({ name: '', nik: '', email: '', phone: '', role: '', photoURL: '', availabilityStatus: 'Available', workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'], workingHours: '08:00-17:00', skills: '', specialization: '' });
+      setFormData({ name: '', nik: '', email: '', phone: '', telegramId: '', address: '', title: '', role: 'teknisi', password: '', photoURL: '', availabilityStatus: 'Available', workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'], workingHours: '08:00-17:00', skills: '', specialization: '', bio: '' });
     }
     setIsModalOpen(true);
     setError(null);
@@ -212,7 +226,7 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingTech(null);
-    setFormData({ name: '', nik: '', email: '', phone: '', role: '', photoURL: '', availabilityStatus: 'Available', workingDays: [], workingHours: '', skills: '', specialization: '' });
+    setFormData({ name: '', nik: '', email: '', phone: '', telegramId: '', address: '', title: '', role: 'teknisi', password: '', photoURL: '', availabilityStatus: 'Available', workingDays: [], workingHours: '', skills: '', specialization: '', bio: '' });
     setError(null);
     setUploading(false);
   };
@@ -421,15 +435,18 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
                 </div>
               </div>
               
-              <div className="flex items-center gap-2 mb-1">
-                <h3 className="text-lg font-bold text-neutral-900 truncate">{tech.name}</h3>
-                <div className={`w-2 h-2 rounded-full shrink-0 ${
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-neutral-900 truncate">{tech.name}</h3>
+                    <p className="text-xs text-neutral-500 truncate">{tech.title || 'Technician'}</p>
+                  </div>
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${
                   tech.availabilityStatus === 'Available' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' :
                   tech.availabilityStatus === 'Busy' ? 'bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.4)]' :
                   'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]'
                 }`} title={tech.availabilityStatus} />
               </div>
-              <p className="text-sm text-emerald-600 font-medium mb-4 truncate">{tech.role || 'General Technician'}</p>
+              <p className="text-sm text-emerald-600 font-medium mb-4 truncate">{tech.specialization || 'General'}</p>
               
               <div className="space-y-4">
                 <div className="grid grid-cols-1 gap-2">
@@ -733,24 +750,86 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
                       placeholder="+62..."
                     />
                   </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-neutral-700 mb-1">Role / Specialty</label>
+                    <label className="block text-sm font-medium text-neutral-700 mb-1">Telegram ID</label>
                     <input
                       type="text"
-                      readOnly={!canManage}
-                      value={formData.role}
-                      onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                      className={`w-full px-4 py-2 border rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all ${
-                        error === 'Role is required' ? 'border-red-500 bg-red-50/50' : 'border-black/10'
-                      } ${!canManage ? 'bg-neutral-50 cursor-not-allowed' : ''}`}
-                      placeholder="Network Specialist, etc."
+                      value={formData.telegramId}
+                      onChange={(e) => setFormData({ ...formData, telegramId: e.target.value })}
+                      className="w-full px-4 py-2 border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                      placeholder="e.g. 123456789"
                     />
-                    {error === 'Role is required' && (
-                      <p className="mt-1 text-[10px] font-bold text-red-600 uppercase tracking-wider">Role is required</p>
-                    )}
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">Address</label>
+                  <textarea
+                    value={formData.address}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    className="w-full px-4 py-2 border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none resize-none"
+                    placeholder="Technician's home or base address..."
+                    rows={2}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">Bio / Notes</label>
+                  <textarea
+                    value={formData.bio}
+                    onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+                    className="w-full px-4 py-2 border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none resize-none"
+                    placeholder="Brief biography or internal notes about the technician..."
+                    rows={3}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700 mb-1">Job Title / Position</label>
+                    <input
+                      type="text"
+                      value={formData.title}
+                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                      className="w-full px-4 py-2 border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                      placeholder="e.g. Senior Network Engineer"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700 mb-1">System Role</label>
+                    <select
+                      disabled={!canManage}
+                      value={formData.role}
+                      onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
+                      className={`w-full px-4 py-2 border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none bg-white ${!canManage ? 'bg-neutral-50 cursor-not-allowed' : ''}`}
+                    >
+                      <option value="teknisi">Technician</option>
+                      <option value="staf">Staff</option>
+                      <option value="admin">Admin</option>
+                      <option value="superadmin">Super Admin</option>
+                    </select>
+                  </div>
+                </div>
+
+                {canManage && (
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700 mb-1">
+                      {editingTech ? 'Reset Password (leave blank to keep current)' : 'Initial Password'}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        className="w-full px-4 py-2 border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none pr-10"
+                        placeholder="••••••••"
+                      />
+                      <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-neutral-700 mb-1">Main Specialization</label>
                     <input

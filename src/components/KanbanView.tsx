@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { Ticket, TicketStatus, TicketPriority } from '../types';
+import { stripHtml } from '../lib/textUtils';
 import { 
   CheckCircle2,
   AlertCircle,
@@ -13,7 +14,8 @@ import {
   Zap,
   Timer,
   AlertTriangle,
-  TrendingUp
+  TrendingUp,
+  UserPlus
 } from 'lucide-react';
 import { Timestamp } from 'firebase/firestore';
 
@@ -24,8 +26,11 @@ interface KanbanViewProps {
   setSelectedTicket: (ticket: Ticket & { customerName?: string }) => void;
   setIsDetailsModalOpen: (isOpen: boolean) => void;
   handleSmartAssign: (ticketId: string) => void;
+  handleAssignToMe: (ticketId: string) => void;
   getPriorityColor: (priority: TicketPriority) => string;
   getSLAStatus: (ticket: Ticket) => 'within-sla' | 'near-breach' | 'breached';
+  isTechnician: boolean;
+  myTechnicianId?: string;
 }
 
 export default function KanbanView({
@@ -35,8 +40,11 @@ export default function KanbanView({
   setSelectedTicket,
   setIsDetailsModalOpen,
   handleSmartAssign,
+  handleAssignToMe,
   getPriorityColor,
-  getSLAStatus
+  getSLAStatus,
+  isTechnician,
+  myTechnicianId
 }: KanbanViewProps) {
   const columns: { id: TicketStatus; title: string; color: string; icon: React.ReactNode }[] = [
     { id: 'open', title: 'Open', color: 'bg-sky-500', icon: <AlertCircle className="w-3 h-3" /> },
@@ -122,6 +130,18 @@ export default function KanbanView({
                         }
                         return null;
                       })()}
+                      {isTechnician && myTechnicianId && !ticket.technicianIds?.includes(myTechnicianId) && (
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAssignToMe(ticket.id);
+                          }}
+                          className="p-1 opacity-0 group-hover:opacity-100 text-emerald-600 hover:text-emerald-800 transition-all"
+                          title="Assign to Me"
+                        >
+                          <UserPlus size={14} />
+                        </button>
+                      )}
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
@@ -145,7 +165,7 @@ export default function KanbanView({
                       <span className="text-[9px] font-black text-emerald-600 uppercase tracking-tighter">{ticket.points} PTS</span>
                     </div>
                   )}
-                  <p className="text-xs text-slate-500 line-clamp-2 mb-4 leading-relaxed">{ticket.description}</p>
+                  <p className="text-xs text-slate-500 line-clamp-2 mb-4 leading-relaxed">{stripHtml(ticket.description)}</p>
 
                   <div className="flex items-center justify-between pt-3 border-t border-slate-50">
                     <div className="flex items-center gap-2">

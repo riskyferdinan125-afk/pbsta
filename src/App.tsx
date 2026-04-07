@@ -411,7 +411,7 @@ function AppContent() {
               exit={{ opacity: 0, x: -10 }}
               transition={{ duration: 0.2 }}
             >
-              {activeView === 'dashboard' && <Dashboard />}
+              {activeView === 'dashboard' && <Dashboard onNavigate={setActiveView} />}
               {activeView === 'tickets' && (
                 <TicketList 
                   profile={profile}

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, getDocs, updateDoc, increment, query, where } from 'firebase/firestore';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { Technician, Material, MaterialUsage, RepairRecord, Notification, Job, JobUsage } from '../types';
 import { X, Plus, Trash2, Save, Clock, Wrench, Package, AlertTriangle, Camera, MapPin, PenTool, Briefcase, Settings, HardDrive, ChevronLeft, ChevronRight, CheckCircle2 } from 'lucide-react';
@@ -61,6 +63,14 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
 
   const [isUploading, setIsUploading] = useState(false);
   const sigCanvas = React.useRef<SignatureCanvas>(null);
+
+  const quillModules = {
+    toolbar: [
+      ['bold', 'italic', 'underline', 'strike'],
+      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+      ['link', 'clean'],
+    ],
+  };
 
   useEffect(() => {
     // Get current location
@@ -404,7 +414,7 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
       // Log History
       await addDoc(collection(db, 'ticketHistory'), {
         ticketId,
-        type: 'note_added',
+        type: 'repair_record_added',
         toValue: `Repair record added by ${technicians.find(t => t.id === formData.technicianId)?.name || 'Technician'}: ${formData.notes.slice(0, 50)}${formData.notes.length > 50 ? '...' : ''}`,
         changedBy: auth.currentUser?.email || 'Unknown',
         timestamp: serverTimestamp()
@@ -799,35 +809,42 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
                 <div className="space-y-4">
                   <div className="space-y-1.5">
                     <label className="text-sm font-bold text-neutral-700">Penyebab Gangguan (Root Cause)</label>
-                    <textarea
-                      required
-                      rows={3}
-                      value={formData.rootCause}
-                      onChange={(e) => setFormData({ ...formData, rootCause: e.target.value })}
-                      className="w-full px-4 py-3 bg-white border border-black/10 rounded-2xl focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all resize-none"
-                      placeholder="Apa penyebab gangguannya?"
-                    />
+                    <div className="bg-white border border-black/10 rounded-2xl overflow-hidden">
+                      <ReactQuill
+                        theme="snow"
+                        value={formData.rootCause}
+                        onChange={(content) => setFormData({ ...formData, rootCause: content })}
+                        modules={quillModules}
+                        placeholder="Apa penyebab gangguannya?"
+                        className="bg-white"
+                      />
+                    </div>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-sm font-bold text-neutral-700">Perbaikan Gangguan (Repair Action)</label>
-                    <textarea
-                      required
-                      rows={3}
-                      value={formData.repairAction}
-                      onChange={(e) => setFormData({ ...formData, repairAction: e.target.value })}
-                      className="w-full px-4 py-3 bg-white border border-black/10 rounded-2xl focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all resize-none"
-                      placeholder="Apa tindakan perbaikan yang dilakukan?"
-                    />
+                    <div className="bg-white border border-black/10 rounded-2xl overflow-hidden">
+                      <ReactQuill
+                        theme="snow"
+                        value={formData.repairAction}
+                        onChange={(content) => setFormData({ ...formData, repairAction: content })}
+                        modules={quillModules}
+                        placeholder="Apa tindakan perbaikan yang dilakukan?"
+                        className="bg-white"
+                      />
+                    </div>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-sm font-bold text-neutral-700">Notes (Optional)</label>
-                    <textarea
-                      rows={2}
-                      value={formData.notes}
-                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                      className="w-full px-4 py-3 bg-white border border-black/10 rounded-2xl focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all resize-none"
-                      placeholder="Catatan tambahan..."
-                    />
+                    <div className="bg-white border border-black/10 rounded-2xl overflow-hidden">
+                      <ReactQuill
+                        theme="snow"
+                        value={formData.notes}
+                        onChange={(content) => setFormData({ ...formData, notes: content })}
+                        modules={quillModules}
+                        placeholder="Catatan tambahan..."
+                        className="bg-white"
+                      />
+                    </div>
                   </div>
                 </div>
               </motion.div>

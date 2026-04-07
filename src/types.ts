@@ -8,12 +8,15 @@ export interface UserProfile {
   uid: string;
   name: string;
   email: string;
+  title?: string;
   nik?: string;
   phone?: string;
+  address?: string;
   role: 'superadmin' | 'admin' | 'staf' | 'teknisi';
   photoURL?: string;
   telegramId?: string;
   password?: string;
+  bio?: string;
   availabilityStatus?: AvailabilityStatus;
   skills?: string[];
   specialization?: string;
@@ -82,6 +85,7 @@ export interface Ticket {
   email?: string;
   rating?: number; // Customer rating (1-5)
   feedback?: string; // Customer feedback
+  resolvedAt?: Timestamp;
   createdAt: Timestamp;
   updatedAt?: Timestamp;
 }
@@ -153,9 +157,13 @@ export interface Technician {
   name: string;
   nik?: string;
   email: string;
+  title?: string;
   phone?: string;
+  address?: string;
   role?: string;
   photoURL?: string;
+  telegramId?: string;
+  bio?: string;
   availabilityStatus?: AvailabilityStatus;
   skills?: string[];
   specialization?: string;
@@ -212,7 +220,7 @@ export interface RepairRecord {
 export interface TicketHistory {
   id: string;
   ticketId: string;
-  type: 'status_change' | 'assignment_change' | 'priority_change' | 'note_added' | 'created' | 'dependency_change' | 'category_change' | 'subcategory_change' | 'due_date_change' | 'timer_event';
+  type: 'status_change' | 'assignment_change' | 'priority_change' | 'note_added' | 'created' | 'dependency_change' | 'category_change' | 'subcategory_change' | 'due_date_change' | 'timer_event' | 'checklist_change' | 'photo_upload' | 'material_change' | 'repair_record_added' | 'title_change' | 'description_change';
   fromValue?: string | string[] | number | boolean;
   toValue: string | string[] | number | boolean;
   changedBy: string;

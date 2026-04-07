@@ -8,7 +8,7 @@ interface BulkUpdateModalProps {
   onClose: () => void;
   bulkData: {
     status: TicketStatus | '';
-    technicianId: string | '';
+    technicianIds: string[];
   };
   setBulkData: React.Dispatch<React.SetStateAction<any>>;
   technicians: Technician[];
@@ -69,18 +69,65 @@ export default function BulkUpdateModal({
                 </select>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Assign Technician</label>
-                <select
-                  value={bulkData.technicianId}
-                  onChange={(e) => setBulkData({ ...bulkData, technicianId: e.target.value })}
-                  className="w-full px-4 py-3 bg-neutral-50 border border-black/5 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all font-medium appearance-none"
-                >
-                  <option value="">No Change</option>
-                  {technicians.map(tech => (
-                    <option key={tech.id} value={tech.id}>{tech.name}</option>
-                  ))}
-                </select>
+              <div className="space-y-3">
+                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Assign Technicians</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 bg-neutral-50 rounded-2xl border border-black/5">
+                  <button
+                    onClick={() => {
+                      if (bulkData.technicianIds.length === 0) {
+                        setBulkData({ ...bulkData, technicianIds: ['unassigned'] });
+                      } else {
+                        setBulkData({ ...bulkData, technicianIds: [] });
+                      }
+                    }}
+                    className={`flex items-center gap-2 p-2 rounded-xl text-xs font-bold transition-all border ${
+                      bulkData.technicianIds.includes('unassigned')
+                        ? 'bg-red-50 border-red-200 text-red-600'
+                        : 'bg-white border-black/5 text-neutral-500 hover:border-red-200'
+                    }`}
+                  >
+                    <div className={`w-4 h-4 rounded border flex items-center justify-center ${
+                      bulkData.technicianIds.includes('unassigned') ? 'bg-red-500 border-red-500 text-white' : 'border-black/10'
+                    }`}>
+                      {bulkData.technicianIds.includes('unassigned') && <Check className="w-3 h-3" />}
+                    </div>
+                    Unassign All
+                  </button>
+                  {technicians.map(tech => {
+                    const isSelected = bulkData.technicianIds.includes(tech.id);
+                    return (
+                      <button
+                        key={tech.id}
+                        onClick={() => {
+                          let newIds = [...bulkData.technicianIds.filter(id => id !== 'unassigned')];
+                          if (isSelected) {
+                            newIds = newIds.filter(id => id !== tech.id);
+                          } else {
+                            newIds.push(tech.id);
+                          }
+                          setBulkData({ ...bulkData, technicianIds: newIds });
+                        }}
+                        className={`flex items-center gap-2 p-2 rounded-xl text-xs font-bold transition-all border ${
+                          isSelected
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
+                            : 'bg-white border-black/5 text-neutral-500 hover:border-emerald-200'
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center ${
+                          isSelected ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-black/10'
+                        }`}>
+                          {isSelected && <Check className="w-3 h-3" />}
+                        </div>
+                        <span className="truncate">{tech.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-neutral-400 italic ml-1">
+                  {bulkData.technicianIds.length > 0 
+                    ? `Selected ${bulkData.technicianIds.includes('unassigned') ? 'Unassign All' : `${bulkData.technicianIds.length} technicians`}`
+                    : 'No changes to assignments'}
+                </p>
               </div>
             </div>
 
@@ -93,7 +140,7 @@ export default function BulkUpdateModal({
               </button>
               <button
                 onClick={handleBulkUpdate}
-                disabled={!bulkData.status && !bulkData.technicianId}
+                disabled={!bulkData.status && bulkData.technicianIds.length === 0}
                 className="flex items-center gap-2 px-8 py-2.5 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Check className="w-5 h-5" />

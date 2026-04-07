@@ -12,9 +12,21 @@ import {
   Filter,
   BarChart3,
   Activity,
-  Briefcase
+  Briefcase,
+  ShieldCheck
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer, 
+  Legend,
+  Cell
+} from 'recharts';
 
 interface EmployeeProductivityProps {
   profile?: UserProfile | null;
@@ -28,6 +40,7 @@ interface ProductivityStats {
   avgRating: number;
   inProgressTickets: number;
   totalPoints: number;
+  slaComplianceRate: number;
 }
 
 export default function EmployeeProductivity({ profile }: EmployeeProductivityProps) {
@@ -53,6 +66,9 @@ export default function EmployeeProductivity({ profile }: EmployeeProductivityPr
         const totalRating = completed.reduce((sum, t) => sum + (t.rating || 0), 0);
         const ratedCount = completed.filter(t => t.rating && t.rating > 0).length;
         const totalPoints = techTickets.reduce((sum, t) => sum + (t.points || 0), 0);
+        
+        const withinSLA = completed.filter(t => t.slaStatus === 'within-sla').length;
+        const slaRate = completed.length > 0 ? (withinSLA / completed.length) * 100 : 0;
 
         return {
           technicianId: tech.uid,
@@ -61,7 +77,8 @@ export default function EmployeeProductivity({ profile }: EmployeeProductivityPr
           avgCompletionTime: completed.length > 0 ? totalTime / completed.length : 0,
           avgRating: ratedCount > 0 ? totalRating / ratedCount : 0,
           inProgressTickets: inProgress.length,
-          totalPoints: totalPoints
+          totalPoints: totalPoints,
+          slaComplianceRate: slaRate
         };
       });
 
@@ -216,6 +233,51 @@ export default function EmployeeProductivity({ profile }: EmployeeProductivityPr
             Skala 1-5 bintang
           </div>
         </div>
+
+        <div className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="p-3 bg-emerald-50 rounded-2xl">
+              <ShieldCheck className="w-6 h-6 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Kepatuhan SLA</p>
+              <p className="text-2xl font-black text-neutral-900">
+                {(() => {
+                  const total = stats.reduce((sum, s) => sum + s.slaComplianceRate, 0);
+                  const count = stats.filter(s => s.completedTickets > 0).length;
+                  return count > 0 ? Math.round(total / count) : 0;
+                })()}%
+              </p>
+            </div>
+          </div>
+          <div className="text-xs text-neutral-500 font-medium">
+            Tiket dalam batas waktu
+          </div>
+        </div>
+      </div>
+
+      {/* Visualization Chart */}
+      <div className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm">
+        <h4 className="text-lg font-bold text-neutral-900 mb-6 flex items-center gap-2">
+          <BarChart3 className="w-5 h-5 text-emerald-600" />
+          Visualisasi Performa Petugas
+        </h4>
+        <div className="h-80 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={sortedStats.slice(0, 8)}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+              <XAxis dataKey="technicianName" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#737373' }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#737373' }} />
+              <Tooltip 
+                contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
+                cursor={{ fill: '#f8fafc' }}
+              />
+              <Legend verticalAlign="top" height={36} />
+              <Bar dataKey="completedTickets" name="Tiket Selesai" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
+              <Bar dataKey="slaComplianceRate" name="Kepatuhan SLA (%)" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={20} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       {/* Main Table */}
@@ -278,6 +340,15 @@ export default function EmployeeProductivity({ profile }: EmployeeProductivityPr
                     {sortBy === 'totalPoints' && (sortOrder === 'asc' ? <TrendingUp className="w-3 h-3 rotate-180" /> : <TrendingUp className="w-3 h-3" />)}
                   </div>
                 </th>
+                <th 
+                  className="px-6 py-4 text-xs font-bold text-neutral-500 uppercase tracking-wider text-center cursor-pointer hover:text-emerald-600 transition-colors"
+                  onClick={() => handleSort('slaComplianceRate')}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    SLA Rate
+                    {sortBy === 'slaComplianceRate' && (sortOrder === 'asc' ? <TrendingUp className="w-3 h-3 rotate-180" /> : <TrendingUp className="w-3 h-3" />)}
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black/5">
@@ -320,6 +391,11 @@ export default function EmployeeProductivity({ profile }: EmployeeProductivityPr
                   <td className="px-6 py-4 text-center">
                     <div className="font-black text-emerald-600">
                       {row.totalPoints.toLocaleString()}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <div className={`font-bold ${row.slaComplianceRate >= 90 ? 'text-emerald-600' : row.slaComplianceRate >= 70 ? 'text-amber-600' : 'text-rose-600'}`}>
+                      {Math.round(row.slaComplianceRate)}%
                     </div>
                   </td>
                 </motion.tr>

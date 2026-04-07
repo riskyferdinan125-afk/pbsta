@@ -11,7 +11,10 @@ import {
   Activity,
   Shield,
   MapPin,
-  CheckCircle2
+  CheckCircle2,
+  Send,
+  Home,
+  FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -99,7 +102,7 @@ export default function TechnicianDetailsModal({ isOpen, onClose, technician }: 
                   </div>
                   <p className="text-emerald-600 font-semibold flex items-center gap-2">
                     <Briefcase className="w-4 h-4" />
-                    {technician.role || 'General Technician'}
+                    {technician.title || technician.role || 'General Technician'}
                     {technician.specialization && (
                       <span className="ml-2 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase rounded-md border border-emerald-200">
                         {technician.specialization}
@@ -143,6 +146,39 @@ export default function TechnicianDetailsModal({ isOpen, onClose, technician }: 
                           <div>
                             <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Phone Number</p>
                             <p className="text-sm font-medium text-neutral-900">{technician.phone}</p>
+                          </div>
+                        </div>
+                      )}
+                      {technician.telegramId && (
+                        <div className="flex items-start gap-4 p-3 rounded-2xl bg-neutral-50 border border-black/5">
+                          <div className="p-2 bg-white rounded-xl shadow-sm text-neutral-400">
+                            <Send className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Telegram ID</p>
+                            <p className="text-sm font-medium text-neutral-900">{technician.telegramId}</p>
+                          </div>
+                        </div>
+                      )}
+                      {technician.address && (
+                        <div className="flex items-start gap-4 p-3 rounded-2xl bg-neutral-50 border border-black/5">
+                          <div className="p-2 bg-white rounded-xl shadow-sm text-neutral-400">
+                            <Home className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Address</p>
+                            <p className="text-sm font-medium text-neutral-900">{technician.address}</p>
+                          </div>
+                        </div>
+                      )}
+                      {technician.bio && (
+                        <div className="flex items-start gap-4 p-3 rounded-2xl bg-neutral-50 border border-black/5">
+                          <div className="p-2 bg-white rounded-xl shadow-sm text-neutral-400">
+                            <FileText className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Bio / Notes</p>
+                            <p className="text-sm font-medium text-neutral-900 whitespace-pre-wrap">{technician.bio}</p>
                           </div>
                         </div>
                       )}

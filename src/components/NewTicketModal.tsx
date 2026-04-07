@@ -1,5 +1,7 @@
 import React, { useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 import { 
   X, 
   Search, 
@@ -13,7 +15,8 @@ import {
   Activity,
   Zap,
   Sparkles,
-  TrendingUp
+  TrendingUp,
+  AlignLeft
 } from 'lucide-react';
 import { Customer, Technician, TicketCategory, TicketPriority, TicketStatus } from '../types';
 import { 
@@ -94,6 +97,14 @@ export default function NewTicketModal({
   }, [newTicket.category, newTicket.subCategory, technicians, tickets]);
 
   const topScore = smartSuggestions[0]?.score || 0;
+
+  const quillModules = {
+    toolbar: [
+      ['bold', 'italic', 'underline', 'strike'],
+      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+      ['link', 'clean'],
+    ],
+  };
 
   return (
     <AnimatePresence>
@@ -293,13 +304,16 @@ export default function NewTicketModal({
                   {/* Description */}
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Description</label>
-                    <textarea
-                      placeholder="Describe the issue or task..."
-                      value={newTicket.description}
-                      onChange={(e) => setNewTicket({ ...newTicket, description: e.target.value })}
-                      rows={3}
-                      className="w-full px-4 py-3 bg-neutral-50 border border-black/5 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all font-medium resize-none"
-                    />
+                    <div className="bg-neutral-50 border border-black/5 rounded-2xl overflow-hidden">
+                      <ReactQuill
+                        theme="snow"
+                        value={newTicket.description}
+                        onChange={(content) => setNewTicket({ ...newTicket, description: content })}
+                        modules={quillModules}
+                        placeholder="Describe the issue or task..."
+                        className="bg-white"
+                      />
+                    </div>
                   </div>
 
                   {/* Technician Assignment */}

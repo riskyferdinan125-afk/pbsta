@@ -91,10 +91,10 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [bulkData, setBulkData] = useState<{
     status: TicketStatus | '';
-    technicianId: string | '';
+    technicianIds: string[];
   }>({
     status: '',
-    technicianId: '',
+    technicianIds: [],
   });
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
   const [confirmModal, setConfirmModal] = useState<{
@@ -702,7 +702,7 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
 
   const handleBulkUpdate = async () => {
     if (selectedTicketIds.length === 0) return;
-    if (!bulkData.status && !bulkData.technicianId) {
+    if (!bulkData.status && bulkData.technicianIds.length === 0) {
       showToast('Please select at least one change to apply', 'error');
       return;
     }
@@ -731,16 +731,16 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
           });
         }
         
-        if (bulkData.technicianId) {
+        if (bulkData.technicianIds.length > 0) {
           const oldTicket = tickets.find(t => t.id === id);
           const oldTechIds = oldTicket?.technicianIds || [];
           let newTechIds: string[];
 
-          if (bulkData.technicianId === 'unassigned') {
+          if (bulkData.technicianIds.includes('unassigned')) {
             newTechIds = [];
           } else {
-            // For bulk, we replace with the selected technician
-            newTechIds = [bulkData.technicianId];
+            // For bulk, we replace with the selected technicians
+            newTechIds = bulkData.technicianIds;
           }
           
           updates.technicianIds = newTechIds;
@@ -764,6 +764,7 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
       showToast(`Successfully updated ${selectedTicketIds.length} tickets`);
       setSelectedTicketIds([]);
       setIsBulkModalOpen(false);
+      setBulkData({ status: '', technicianIds: [] });
       setConfirmModal(prev => ({ ...prev, isOpen: false }));
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'tickets/bulk');
@@ -772,7 +773,7 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
   };
 
   const openBulkModal = () => {
-    setBulkData({ status: '', technicianId: '' });
+    setBulkData({ status: '', technicianIds: [] });
     setIsBulkModalOpen(true);
   };
 
@@ -982,12 +983,15 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
         <KanbanView 
           filteredTickets={filteredTickets}
           handleSmartAssign={handleSmartAssign}
+          handleAssignToMe={handleAssignToMe}
           setIsDetailsModalOpen={setIsDetailsModalOpen}
           setSelectedTicket={setSelectedTicket}
           setNewTicket={setNewTicket}
           setIsModalOpen={setIsModalOpen}
           getPriorityColor={getPriorityColor}
           getSLAStatus={getSLAStatus}
+          isTechnician={isTechnician}
+          myTechnicianId={myTechnicianId}
         />
       ) : (
         <div className="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
@@ -1049,6 +1053,8 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
                   getPriorityColor={getPriorityColor}
                   getSLAStatus={getSLAStatus as any}
                   tickets={tickets}
+                  isTechnician={isTechnician}
+                  myTechnicianId={myTechnicianId}
                 />
               )) : (
                 <tr>
