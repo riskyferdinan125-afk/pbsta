@@ -19,6 +19,8 @@ import {
 import { Ticket, TicketHistory, Technician, Customer, TicketStatus, TicketPriority, TicketCategory, RepairRecord, TicketNote, UserProfile, ChecklistItem, Notification, Material } from '../types';
 import { X, Edit2, Check, TrendingUp, Clock, User, ArrowRight, History, Info, Wrench, Send, MessageSquare, UserPlus, RefreshCw, PlusCircle, Link as LinkIcon, AlertTriangle, CheckCircle, CheckCircle2, AlertCircle, Package, StickyNote, ChevronRight, Loader2, Hash, Box, MapPin, Phone, Mail, Camera, Play, Square, Navigation, Timer, HelpCircle, Trash2, ExternalLink, Calendar, Tag, Search, Share2, ArrowUpRight, Lock, FileText, Type, AlignLeft, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { calculateSLAStatus, getSLAStatusColor, getSLAStatusLabel, getSLARemainingTime } from '../lib/slaUtils';
+import { createNotification, notifyTechnicians } from '../lib/notificationService';
 import { useToast } from './Toast';
 import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
 
@@ -71,7 +73,7 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
   const [isDepDropdownOpen, setIsDepDropdownOpen] = useState(false);
 
   const assignedTechnicians = technicians.filter(tech => ticket.technicianIds?.includes(tech.id));
-  const hasLocationData = assignedTechnicians.some(tech => tech.location);
+  const hasLocationData = assignedTechnicians.some(tech => tech.location) || !!customer?.location;
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<TicketStatus | null>(null);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
@@ -162,21 +164,6 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
       handleFirestoreError(error, OperationType.DELETE, `tickets/${ticket.id}/materialsUsed/${id}`);
     }
   };
-  const sendNotification = async (userId: string, title: string, message: string, type: string, link?: string) => {
-    try {
-      await addDoc(collection(db, 'notifications'), {
-        userId,
-        title,
-        message,
-        type,
-        link,
-        read: false,
-        createdAt: serverTimestamp()
-      });
-    } catch (error) {
-      console.error("Error sending notification:", error);
-    }
-  };
 
   useEffect(() => {
     if (ticket.customerId) {
@@ -218,21 +205,7 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
 
   const isBlocked = dependencyTickets.some(d => d.status !== 'resolved' && d.status !== 'closed');
 
-  const getSLAStatus = (ticket: Ticket) => {
-    if (ticket.status === 'resolved' || ticket.status === 'closed') return 'within-sla';
-    if (!ticket.slaDeadline) return 'within-sla';
-
-    const now = new Date();
-    const deadline = ticket.slaDeadline instanceof Timestamp ? ticket.slaDeadline.toDate() : new Date(ticket.slaDeadline);
-    
-    if (now > deadline) return 'breached';
-    
-    // Near breach if less than 1 hour remaining
-    const diff = deadline.getTime() - now.getTime();
-    if (diff < 1 * 60 * 60 * 1000) return 'near-breach';
-    
-    return 'within-sla';
-  };
+  const getSLAStatus = (ticket: Ticket) => calculateSLAStatus(ticket);
 
   useEffect(() => {
     const q = query(
@@ -332,23 +305,16 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
       await updateDoc(doc(db, 'tickets', ticket.id), updates);
 
       // Notify newly assigned technicians
-      for (const tid of newTechIds) {
-        if (!oldTechIds.includes(tid)) {
-          const tech = technicians.find(t => t.id === tid);
-          if (tech && tech.email) {
-            const userQuery = query(collection(db, 'users'), where('email', '==', tech.email), where('role', '==', 'teknisi'));
-            const userSnap = await getDocs(userQuery);
-            if (!userSnap.empty) {
-              await sendNotification(
-                userSnap.docs[0].id,
-                'New Ticket Assigned',
-                `You have been assigned to ticket #${ticket.id.slice(0, 8)}: ${ticket.title}`,
-                'info',
-                `/tickets?id=${ticket.id}`
-              );
-            }
-          }
-        }
+      const newlyAssigned = newTechIds.filter(tid => !oldTechIds.includes(tid));
+      if (newlyAssigned.length > 0) {
+        await notifyTechnicians(
+          newlyAssigned,
+          'New Ticket Assigned',
+          `You have been assigned to ticket #${ticket.id.slice(0, 8)}: ${ticket.title}`,
+          'info',
+          'newTicket',
+          `/tickets?id=${ticket.id}`
+        );
       }
 
       await addDoc(collection(db, 'ticketHistory'), {
@@ -416,13 +382,27 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
         timestamp: serverTimestamp()
       });
 
+      // Notify assigned technicians about new note
+      if (ticket.technicianIds && ticket.technicianIds.length > 0) {
+        await notifyTechnicians(
+          ticket.technicianIds,
+          'New Comment',
+          `${profile?.name || 'Someone'} added a note to ticket #${ticket.id.slice(0, 8)}`,
+          'info',
+          'newComment',
+          `/tickets?id=${ticket.id}`,
+          auth.currentUser?.uid // Don't notify the person who added the note
+        );
+      }
+
       // Notify admins if technician added a note
       if (profile?.role === 'teknisi') {
-        await sendNotification(
+        await createNotification(
           'admin',
           'New Technician Note',
           `${profile.name} added a note to ticket #${ticket.id.slice(0, 8)}`,
           'info',
+          'newComment',
           `/tickets?id=${ticket.id}`
         );
       }
@@ -480,6 +460,19 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
         timestamp: serverTimestamp(),
         description: 'Priority updated manually'
       });
+
+      // Notify assigned technicians about priority update
+      if (ticket.technicianIds && ticket.technicianIds.length > 0) {
+        await notifyTechnicians(
+          ticket.technicianIds,
+          'Ticket Priority Updated',
+          `Ticket #${ticket.id.slice(0, 8)} priority has been updated to ${priority}`,
+          'warning',
+          'ticketUpdate',
+          `/tickets?id=${ticket.id}`,
+          auth.currentUser?.uid
+        );
+      }
 
       showToast(`Priority updated to ${priority}`);
     } catch (error) {
@@ -634,7 +627,7 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
     try {
       await updateDoc(doc(db, 'tickets', ticket.id), {
         isTimerRunning: true,
-        timerStartedAt: serverTimestamp(),
+        timerStartedAt: new Date().toISOString(),
         updatedAt: serverTimestamp()
       });
 
@@ -657,7 +650,11 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
     if (!ticket.timerStartedAt) return;
     
     try {
-      const startTime = ticket.timerStartedAt.toDate();
+      const timerStartedAt = ticket.timerStartedAt;
+      const startTime = typeof timerStartedAt === 'string' 
+        ? new Date(timerStartedAt) 
+        : (timerStartedAt as any).toDate();
+        
       const endTime = new Date();
       const diffMinutes = Math.round((endTime.getTime() - startTime.getTime()) / 60000);
       const totalTime = (ticket.totalTimeSpent || 0) + diffMinutes;
@@ -779,11 +776,12 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
 
       // Notify admins if all checklist items are completed
       if (updatedChecklist.length > 0 && updatedChecklist.every(item => item.completed)) {
-        await sendNotification(
+        await createNotification(
           'admin',
           'Checklist Completed',
           `All checklist items for ticket #${ticket.id.slice(0, 8)} have been completed by ${profile?.name || 'Technician'}`,
           'success',
+          'ticketUpdate',
           `/tickets?id=${ticket.id}`
         );
       }
@@ -919,11 +917,12 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
             const userQuery = query(collection(db, 'users'), where('email', '==', customerData.email));
             const userSnap = await getDocs(userQuery);
             if (!userSnap.empty) {
-              await sendNotification(
+              await createNotification(
                 userSnap.docs[0].id,
                 'Ticket Status Updated',
                 `Your ticket #${ticket.id.slice(0, 8)} status has been updated to ${status}`,
                 'info',
+                'ticketUpdate',
                 `/portal`
               );
             }
@@ -931,13 +930,27 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
         }
       }
 
+      // Notify assigned technicians about status update
+      if (ticket.technicianIds && ticket.technicianIds.length > 0) {
+        await notifyTechnicians(
+          ticket.technicianIds,
+          'Ticket Status Updated',
+          `Ticket #${ticket.id.slice(0, 8)} status has been updated to ${status}`,
+          'info',
+          'ticketUpdate',
+          `/tickets?id=${ticket.id}`,
+          auth.currentUser?.uid
+        );
+      }
+
       // Notify admins if technician updated status
       if (profile?.role === 'teknisi') {
-        await sendNotification(
+        await createNotification(
           'admin',
           'Ticket Status Updated',
           `${profile.name} updated ticket #${ticket.id.slice(0, 8)} to ${status}`,
           'info',
+          'ticketUpdate',
           `/tickets?id=${ticket.id}`
         );
       }
@@ -967,6 +980,25 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `tickets/${ticket.id}`);
       showToast('Failed to update status', 'error');
+    }
+  };
+
+  const handleUpdateCustomerLocation = async () => {
+    if (!customer) return;
+    const loc = await getCurrentLocation();
+    if (!loc) {
+      showToast('Could not get current location', 'error');
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, 'customers', customer.id), {
+        location: loc,
+        updatedAt: serverTimestamp()
+      });
+      showToast('Customer location updated', 'success');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `customers/${customer.id}`);
     }
   };
 
@@ -1192,6 +1224,13 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
               <Info className="w-6 h-6" />
             </div>
             <div>
+              <nav className="flex items-center gap-1 mb-1.5" aria-label="Breadcrumb">
+                <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Dashboard</span>
+                <ChevronRight className="w-2.5 h-2.5 text-neutral-300" />
+                <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Tickets</span>
+                <ChevronRight className="w-2.5 h-2.5 text-neutral-300" />
+                <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">#{ticket.ticketNumber}</span>
+              </nav>
               {isEditingTitle ? (
                 <div className="flex items-center gap-2">
                   <input
@@ -1368,9 +1407,20 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
 
                 {/* Overview Section */}
                 <section className="space-y-4">
-                  <h4 className="text-xs font-bold text-neutral-400 uppercase tracking-widest flex items-center gap-2">
-                    <Info className="w-3 h-3" /> Overview
-                  </h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-neutral-400 uppercase tracking-widest flex items-center gap-2">
+                      <Info className="w-3 h-3" /> Overview
+                    </h4>
+                    {isBlocked && (
+                      <button 
+                        onClick={() => setActiveTab('dependencies')}
+                        className="text-[10px] font-bold text-orange-600 hover:underline flex items-center gap-1"
+                      >
+                        <AlertTriangle className="w-3 h-3" />
+                        View Blocking Prerequisites
+                      </button>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 gap-8 bg-neutral-50 p-6 rounded-2xl border border-black/5">
                     <div className="space-y-1">
                       <p className="text-xs text-neutral-500">Customer</p>
@@ -1389,13 +1439,26 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                             </div>
                             {(() => {
                               const sla = getSLAStatus(ticket);
+                              const remaining = getSLARemainingTime(ticket);
                               return (
-                                <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border w-fit ${
-                                  sla === 'breached' ? 'bg-rose-50 text-rose-600 border-rose-100' :
-                                  sla === 'near-breach' ? 'bg-amber-50 text-amber-600 border-amber-100 animate-pulse' :
-                                  'bg-emerald-50 text-emerald-600 border-emerald-100'
-                                }`}>
-                                  {sla === 'breached' ? 'SLA Breached' : sla === 'near-breach' ? 'Near Breach' : 'Within SLA'}
+                                <div className="flex flex-col gap-1.5">
+                                  <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border w-fit ${
+                                    sla === 'breached' ? 'bg-rose-50 text-rose-600 border-rose-100' :
+                                    sla === 'near-breach' ? 'bg-amber-50 text-amber-600 border-amber-100 animate-pulse' :
+                                    'bg-emerald-50 text-emerald-600 border-emerald-100'
+                                  }`}>
+                                    {sla === 'breached' ? 'SLA Breached' : sla === 'near-breach' ? 'Near Breach' : 'Within SLA'}
+                                  </div>
+                                  {remaining && (
+                                    <div className={`flex items-center gap-1 text-[10px] font-bold ${
+                                      sla === 'breached' ? 'text-rose-500' :
+                                      sla === 'near-breach' ? 'text-amber-500' :
+                                      'text-emerald-500'
+                                    }`}>
+                                      <Timer className="w-3 h-3" />
+                                      {remaining.hours}h {remaining.mins}m {remaining.isPast ? 'overdue' : 'remaining'}
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })()}
@@ -1430,6 +1493,13 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                             <MapPin className="w-3 h-3 mt-0.5 text-neutral-400" />
                             <span className="line-clamp-2">{customer.address}</span>
                           </div>
+                          <button 
+                            onClick={handleUpdateCustomerLocation}
+                            className="mt-2 w-full py-1.5 bg-neutral-50 hover:bg-neutral-100 text-[10px] font-bold text-neutral-600 rounded-lg border border-black/5 transition-all flex items-center justify-center gap-2"
+                          >
+                            <Navigation className="w-3 h-3" />
+                            {customer.location ? 'Update Site Location' : 'Set Site Location'}
+                          </button>
                         </div>
                       )}
                     </div>
@@ -1459,12 +1529,21 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                         </select>
                         <ChevronRight className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 opacity-50 rotate-90 pointer-events-none" />
                       </div>
-                      {isBlocked && (
-                        <div className="mt-2 flex items-center gap-1.5 px-2 py-1 bg-orange-50 text-orange-600 text-[9px] font-black uppercase rounded-lg border border-orange-100 w-fit animate-pulse">
-                          <AlertTriangle className="w-3 h-3" />
-                          Blocked
-                        </div>
-                      )}
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          onClick={() => setIsRepairModalOpen(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase rounded-lg border border-emerald-100 hover:bg-emerald-100 transition-all shadow-sm"
+                        >
+                          <Wrench className="w-3 h-3" />
+                          Add Repair Record
+                        </button>
+                        {isBlocked && (
+                          <div className="flex items-center gap-1.5 px-2 py-1 bg-orange-50 text-orange-600 text-[9px] font-black uppercase rounded-lg border border-orange-100 w-fit animate-pulse">
+                            <AlertTriangle className="w-3 h-3" />
+                            Blocked
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div className="space-y-1">
                       <p className="text-xs text-neutral-500">Priority</p>
@@ -1596,7 +1675,16 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                                       tech.availabilityStatus === 'On Leave' ? 'bg-red-500' : 'bg-neutral-400'
                                     }`} />
                                   </div>
-                                  <span className="text-xs font-bold text-neutral-900">{tech.name}</span>
+                                  <div className="flex flex-col min-w-0">
+                                    <span className="text-xs font-bold text-neutral-900 truncate">{tech.name}</span>
+                                    <span className={`text-[8px] font-black uppercase tracking-widest ${
+                                      tech.availabilityStatus === 'Available' ? 'text-emerald-500' :
+                                      tech.availabilityStatus === 'Busy' ? 'text-yellow-500' : 
+                                      tech.availabilityStatus === 'On Leave' ? 'text-red-500' : 'text-neutral-400'
+                                    }`}>
+                                      {tech.availabilityStatus || 'Offline'}
+                                    </span>
+                                  </div>
                                   <button 
                                     onClick={() => handleUpdateTechnician(techId)}
                                     className="p-1 hover:bg-red-50 text-neutral-300 hover:text-red-500 rounded-md transition-colors"
@@ -1655,13 +1743,22 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                           {hasValidMapsKey ? (
                             <APIProvider apiKey={API_KEY} version="weekly">
                               <Map
-                                defaultCenter={assignedTechnicians.find(t => t.location)?.location || { lat: -6.2, lng: 106.8 }}
+                                defaultCenter={customer?.location || assignedTechnicians.find(t => t.location)?.location || { lat: -6.2, lng: 106.8 }}
                                 defaultZoom={14}
                                 mapId="TECHNICIAN_TRACKING_MAP"
                                 // @ts-ignore
                                 internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
                                 style={{ width: '100%', height: '100%' }}
                               >
+                                {customer?.location && (
+                                  <AdvancedMarker position={customer.location}>
+                                    <Pin background="#ef4444" glyphColor="#fff" borderColor="#991b1b" />
+                                    <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-white px-2 py-1 rounded-lg shadow-lg border border-black/5 text-[10px] font-bold whitespace-nowrap flex items-center gap-2">
+                                      <MapPin className="w-3 h-3 text-red-500" />
+                                      Customer Site
+                                    </div>
+                                  </AdvancedMarker>
+                                )}
                                 {assignedTechnicians.map(tech => tech.location && (
                                   <AdvancedMarker 
                                     key={tech.id} 
@@ -1692,6 +1789,25 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                         </div>
                         
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {customer?.location && (
+                            <div className="flex items-center gap-3 p-3 bg-red-50 rounded-xl border border-red-100">
+                              <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center border border-red-100 text-red-500">
+                                <MapPin className="w-5 h-5" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold text-red-900 truncate">Customer Site</p>
+                                <p className="text-[10px] text-red-500 truncate">{customer.address}</p>
+                              </div>
+                              <a 
+                                href={`https://www.google.com/maps?q=${customer.location.lat},${customer.location.lng}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2 bg-white text-neutral-400 hover:text-red-600 rounded-lg border border-black/5 transition-all"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            </div>
+                          )}
                           {assignedTechnicians.filter(t => t.location).map(tech => (
                             <div key={tech.id} className="flex items-center gap-3 p-3 bg-neutral-50 rounded-xl border border-black/5">
                               <div className="w-10 h-10 rounded-lg overflow-hidden border border-black/5">
@@ -1798,6 +1914,48 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                     </div>
                   </div>
                 </section>
+
+                {/* Prerequisites Summary (if any) */}
+                {dependencyTickets.length > 0 && (
+                  <section className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-neutral-400 uppercase tracking-widest flex items-center gap-2">
+                        <LinkIcon className="w-3 h-3" /> Prerequisites
+                      </h4>
+                      <button 
+                        onClick={() => setActiveTab('dependencies')}
+                        className="text-[10px] font-bold text-emerald-600 hover:underline"
+                      >
+                        Manage All
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {dependencyTickets.slice(0, 4).map(dep => (
+                        <div key={dep.id} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-black/5 shadow-sm">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                            dep.status === 'resolved' || dep.status === 'closed' 
+                              ? 'bg-emerald-50 text-emerald-600' 
+                              : 'bg-orange-50 text-orange-600'
+                          }`}>
+                            {dep.status === 'resolved' || dep.status === 'closed' ? <CheckCircle className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[10px] font-mono text-neutral-400">#{dep.ticketNumber}</p>
+                            <p className="text-xs font-bold text-neutral-900 truncate" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(dep.description.substring(0, 30)) }} />
+                          </div>
+                        </div>
+                      ))}
+                      {dependencyTickets.length > 4 && (
+                        <button 
+                          onClick={() => setActiveTab('dependencies')}
+                          className="flex items-center justify-center p-3 bg-neutral-50 rounded-xl border border-dashed border-black/10 text-[10px] font-bold text-neutral-400 uppercase hover:bg-neutral-100 transition-all"
+                        >
+                          +{dependencyTickets.length - 4} More Prerequisites
+                        </button>
+                      )}
+                    </div>
+                  </section>
+                )}
 
                 {/* Photos Section */}
                 <section className="space-y-4">
@@ -1940,9 +2098,17 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                     <h4 className="text-xs font-bold text-neutral-400 uppercase tracking-widest flex items-center gap-2">
                       <Wrench className="w-3 h-3" /> Repair History
                     </h4>
-                    <span className="text-[10px] font-bold text-neutral-400">
-                      {repairRecords.length} Records
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setIsRepairModalOpen(true)}
+                        className="text-[10px] font-black uppercase text-emerald-600 hover:bg-emerald-50 px-2 py-1 rounded transition-all"
+                      >
+                        + Add Record
+                      </button>
+                      <span className="text-[10px] font-bold text-neutral-400">
+                        {repairRecords.length} Records
+                      </span>
+                    </div>
                   </div>
 
                   <div className="space-y-4">
@@ -1970,9 +2136,53 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                               </div>
                             </div>
 
-                            <div className="p-3 bg-neutral-50 rounded-xl">
-                              <p className="text-xs text-neutral-600 leading-relaxed italic">"{record.notes}"</p>
+                            <div className="p-3 bg-neutral-50 rounded-xl space-y-3">
+                              {record.rootCause && (
+                                <div>
+                                  <p className="text-[9px] font-black uppercase text-neutral-400 mb-1">Root Cause</p>
+                                  <div className="text-xs text-neutral-700 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(record.rootCause) }} />
+                                </div>
+                              )}
+                              {record.repairAction && (
+                                <div>
+                                  <p className="text-[9px] font-black uppercase text-neutral-400 mb-1">Repair Action</p>
+                                  <div className="text-xs text-neutral-700 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(record.repairAction) }} />
+                                </div>
+                              )}
+                              {record.notes && (
+                                <div>
+                                  <p className="text-[9px] font-black uppercase text-neutral-400 mb-1">Notes</p>
+                                  <div className="text-xs text-neutral-600 leading-relaxed italic prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(record.notes) }} />
+                                </div>
+                              )}
                             </div>
+
+                            {/* Photos in Record */}
+                            {(record.beforePhoto || record.afterPhoto || record.evidencePhoto) && (
+                              <div className="space-y-2">
+                                <p className="text-[10px] font-black uppercase text-neutral-400 tracking-widest">Photos</p>
+                                <div className="grid grid-cols-3 gap-2">
+                                  {record.beforePhoto && (
+                                    <div className="space-y-1">
+                                      <img src={resolvePhotoUrl(record.beforePhoto)} alt="Before" className="w-full aspect-square object-cover rounded-lg border border-black/5" />
+                                      <p className="text-[8px] font-bold text-center text-neutral-400 uppercase">Before</p>
+                                    </div>
+                                  )}
+                                  {record.afterPhoto && (
+                                    <div className="space-y-1">
+                                      <img src={resolvePhotoUrl(record.afterPhoto)} alt="After" className="w-full aspect-square object-cover rounded-lg border border-black/5" />
+                                      <p className="text-[8px] font-bold text-center text-neutral-400 uppercase">After</p>
+                                    </div>
+                                  )}
+                                  {record.evidencePhoto && (
+                                    <div className="space-y-1">
+                                      <img src={resolvePhotoUrl(record.evidencePhoto)} alt="Evidence" className="w-full aspect-square object-cover rounded-lg border border-black/5" />
+                                      <p className="text-[8px] font-bold text-center text-neutral-400 uppercase">Evidence</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
 
                             {/* Materials in Record */}
                             {record.materialsUsed && record.materialsUsed.length > 0 && (
@@ -2006,6 +2216,22 @@ export default function TicketDetailsModal({ ticket, onClose, technicians, allTi
                                       <span className="text-xs font-bold text-neutral-900">x{j.quantity}</span>
                                     </div>
                                   ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Signature */}
+                            {record.signature && (
+                              <div className="pt-4 border-t border-black/5 flex items-end justify-between">
+                                <div>
+                                  <p className="text-[10px] font-black uppercase text-neutral-400 tracking-widest mb-2">Customer Signature</p>
+                                  <img src={resolvePhotoUrl(record.signature)} alt="Signature" className="h-12 object-contain bg-neutral-50 rounded-lg p-1" />
+                                </div>
+                                <div className="text-right">
+                                  <div className="flex items-center gap-1 justify-end text-emerald-600">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    <span className="text-[10px] font-black uppercase">Verified</span>
+                                  </div>
                                 </div>
                               </div>
                             )}

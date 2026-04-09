@@ -211,7 +211,7 @@ export default function CustomerList({ onCreateTicket }: CustomerListProps) {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
           <input
             type="text"
-            placeholder="Search customers..."
+            placeholder="Cari pelanggan (Nama, ID, ODP, Alamat)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-white border border-black/5 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all"
@@ -250,19 +250,19 @@ export default function CustomerList({ onCreateTicket }: CustomerListProps) {
                 className="flex items-center gap-2 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-100"
               >
                 <span className="text-xs font-bold text-emerald-700 mr-2">
-                  {selectedCustomerIds.length} Selected
+                  {selectedCustomerIds.length} Terpilih
                 </span>
                 <button
                   onClick={handleBulkDelete}
                   className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                  title="Delete Selected"
+                  title="Hapus Terpilih"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => setSelectedCustomerIds([])}
                   className="p-1.5 text-neutral-400 hover:bg-neutral-100 rounded-lg transition-colors"
-                  title="Clear Selection"
+                  title="Batalkan Pilihan"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -274,7 +274,7 @@ export default function CustomerList({ onCreateTicket }: CustomerListProps) {
             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20"
           >
             <Plus className="w-5 h-5" />
-            Add Customer
+            Tambah Pelanggan
           </button>
         </div>
       </div>
@@ -310,7 +310,7 @@ export default function CustomerList({ onCreateTicket }: CustomerListProps) {
                     setSelectedCustomerForDetails(customer);
                   }}
                   className="p-2 hover:bg-blue-50 text-blue-600 rounded-lg"
-                  title="View Details"
+                  title="Lihat Detail"
                 >
                   <Eye className="w-4 h-4" />
                 </button>
@@ -320,7 +320,7 @@ export default function CustomerList({ onCreateTicket }: CustomerListProps) {
                     openModal(customer);
                   }}
                   className="p-2 hover:bg-neutral-100 text-neutral-500 rounded-lg"
-                  title="Edit Customer"
+                  title="Edit Pelanggan"
                 >
                   <Edit2 className="w-4 h-4" />
                 </button>
@@ -330,7 +330,7 @@ export default function CustomerList({ onCreateTicket }: CustomerListProps) {
                     handleDelete(customer.id);
                   }}
                   className="p-2 hover:bg-red-50 text-red-600 rounded-lg"
-                  title="Delete Customer"
+                  title="Hapus Pelanggan"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -373,20 +373,20 @@ export default function CustomerList({ onCreateTicket }: CustomerListProps) {
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-neutral-50 text-neutral-600 rounded-xl text-sm font-bold hover:bg-neutral-100 transition-all border border-black/5"
               >
                 <Eye className="w-4 h-4" />
-                Details
+                Detail
               </button>
               <button
                 onClick={() => onCreateTicket?.(customer.id)}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-emerald-50 text-emerald-700 rounded-xl text-sm font-bold hover:bg-emerald-100 transition-all border border-emerald-100/50"
               >
                 <Plus className="w-4 h-4" />
-                Ticket
+                Buat Tiket
               </button>
             </div>
           </motion.div>
         )) : (
           <div className="col-span-full py-12 text-center text-neutral-500">
-            No customers found.
+            Pelanggan tidak ditemukan.
           </div>
         )}
       </div>
@@ -404,13 +404,13 @@ export default function CustomerList({ onCreateTicket }: CustomerListProps) {
       {/* Confirmation Modal */}
       <ConfirmationModal
         isOpen={confirmDelete.isOpen}
-        title={confirmDelete.isBulk ? 'Delete Multiple Customers' : 'Delete Customer'}
+        title={confirmDelete.isBulk ? 'Hapus Beberapa Pelanggan' : 'Hapus Pelanggan'}
         message={
           confirmDelete.isBulk 
-            ? `Are you sure you want to delete ${selectedCustomerIds.length} selected customers? This action cannot be undone.`
-            : 'Are you sure you want to delete this customer? This action cannot be undone.'
+            ? `Apakah Anda yakin ingin menghapus ${selectedCustomerIds.length} pelanggan yang dipilih? Tindakan ini tidak dapat dibatalkan.`
+            : 'Apakah Anda yakin ingin menghapus pelanggan ini? Tindakan ini tidak dapat dibatalkan.'
         }
-        confirmLabel="Delete"
+        confirmLabel="Hapus"
         onConfirm={confirmDelete.isBulk ? confirmBulkDelete : confirmSingleDelete}
         onCancel={() => setConfirmDelete({ isOpen: false })}
         variant="danger"
@@ -428,7 +428,7 @@ export default function CustomerList({ onCreateTicket }: CustomerListProps) {
             >
               <div className="p-6 border-b border-black/5 flex items-center justify-between">
                 <h3 className="text-xl font-bold text-neutral-900">
-                  {editingCustomer ? 'Edit Customer' : 'Add New Customer'}
+                  {editingCustomer ? 'Edit Pelanggan' : 'Tambah Pelanggan Baru'}
                 </h3>
                 <button onClick={closeModal} className="p-2 hover:bg-neutral-100 rounded-lg">
                   <X className="w-5 h-5" />
@@ -437,18 +437,18 @@ export default function CustomerList({ onCreateTicket }: CustomerListProps) {
               <form onSubmit={handleSubmit} className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-neutral-700 mb-1">Customer ID</label>
+                    <label className="block text-sm font-medium text-neutral-700 mb-1">ID Pelanggan</label>
                     <input
                       required
                       type="text"
                       value={formData.customerId}
                       onChange={(e) => setFormData({ ...formData, customerId: e.target.value })}
                       className="w-full px-4 py-2 border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none"
-                      placeholder="e.g. 12345678"
+                      placeholder="Contoh: 12345678"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-neutral-700 mb-1">Full Name</label>
+                    <label className="block text-sm font-medium text-neutral-700 mb-1">Nama Lengkap</label>
                     <input
                       required
                       type="text"
@@ -461,7 +461,7 @@ export default function CustomerList({ onCreateTicket }: CustomerListProps) {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-neutral-700 mb-1">Phone Number</label>
+                    <label className="block text-sm font-medium text-neutral-700 mb-1">Nomor Telepon</label>
                     <input
                       required
                       type="tel"
@@ -479,12 +479,12 @@ export default function CustomerList({ onCreateTicket }: CustomerListProps) {
                       value={formData.odp}
                       onChange={(e) => setFormData({ ...formData, odp: e.target.value })}
                       className="w-full px-4 py-2 border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none"
-                      placeholder="e.g. ODP-JKT-01"
+                      placeholder="Contoh: ODP-JKT-01"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-1">Email (Optional)</label>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">Email (Opsional)</label>
                   <input
                     type="email"
                     value={formData.email}
@@ -502,14 +502,14 @@ export default function CustomerList({ onCreateTicket }: CustomerListProps) {
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-1">Address</label>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">Alamat</label>
                   <textarea
                     required
                     value={formData.address}
                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                     rows={3}
                     className="w-full px-4 py-2 border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none resize-none"
-                    placeholder="Service address..."
+                    placeholder="Alamat layanan..."
                   />
                 </div>
                 <div className="pt-4 flex gap-3">
@@ -518,13 +518,13 @@ export default function CustomerList({ onCreateTicket }: CustomerListProps) {
                     onClick={closeModal}
                     className="flex-1 py-3 px-4 border border-black/10 rounded-xl font-medium hover:bg-neutral-50 transition-all"
                   >
-                    Cancel
+                    Batal
                   </button>
                   <button
                     type="submit"
                     className="flex-1 py-3 px-4 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20"
                   >
-                    {editingCustomer ? 'Update' : 'Add'} Customer
+                    {editingCustomer ? 'Perbarui' : 'Tambah'} Pelanggan
                   </button>
                 </div>
               </form>

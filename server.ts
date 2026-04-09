@@ -70,20 +70,6 @@ try {
 // Telegram Bot Integration
 let bot: TelegramBot | null = null;
 const projectSessions = new Map<number, { projectId?: string, jobId?: string, stage?: string }>();
-const addProjectSessions = new Map<number, { 
-  stage: string,
-  boqRekon?: string,
-  tiketGamas?: string,
-  evidenPra?: string[],
-  proses?: string[],
-  evidenPasca?: string[],
-  evidenPascaPhotos?: { category: string, photoUrl: string }[],
-  currentEvidenPascaCategory?: string,
-  hasilUkurUrl?: string,
-  materialTibaUrl?: string,
-  abdUrl?: string,
-  baPendukungUrl?: string
-}>();
 const ticketSessions = new Map<number, { category?: string, subCategory?: string, stage?: string }>();
 const repairSessions = new Map<number, { 
   command: 'progres' | 'close',
@@ -132,45 +118,6 @@ const EVIDEN_OPTIONS = [
   'SAMBUNGAN', 'DROPCORE', 'ADAPTOR', 'PEMBONGKARAN'
 ];
 
-function createMultiSelectKeyboard(prefix: string, selectedOptions: string[] = []) {
-  const keyboard = [];
-  for (let i = 0; i < EVIDEN_OPTIONS.length; i += 2) {
-    const opt1 = EVIDEN_OPTIONS[i];
-    const opt2 = EVIDEN_OPTIONS[i + 1];
-    const row = [
-      { 
-        text: `${selectedOptions.includes(opt1) ? '✅ ' : ''}${opt1}`, 
-        callback_data: `${prefix}_toggle_${opt1}` 
-      }
-    ];
-    if (opt2) {
-      row.push({ 
-        text: `${selectedOptions.includes(opt2) ? '✅ ' : ''}${opt2}`, 
-        callback_data: `${prefix}_toggle_${opt2}` 
-      });
-    }
-    keyboard.push(row);
-  }
-  keyboard.push([{ text: '➡️ SELESAI', callback_data: `${prefix}_done` }]);
-  return { inline_keyboard: keyboard };
-}
-
-function createCategoryKeyboard(prefix: string) {
-  const keyboard = [];
-  for (let i = 0; i < EVIDEN_OPTIONS.length; i += 2) {
-    const opt1 = EVIDEN_OPTIONS[i];
-    const opt2 = EVIDEN_OPTIONS[i + 1];
-    const row = [
-      { text: opt1, callback_data: `${prefix}_cat_${opt1}` }
-    ];
-    if (opt2) {
-      row.push({ text: opt2, callback_data: `${prefix}_cat_${opt2}` });
-    }
-    keyboard.push(row);
-  }
-  return { inline_keyboard: keyboard };
-}
-
 function calculatePoints(category: string, subCategory?: string): number {
   let points = CATEGORY_WEIGHTS[category] || 1;
   if (subCategory && SUB_CATEGORY_WEIGHTS[category] && SUB_CATEGORY_WEIGHTS[category][subCategory]) {
@@ -216,6 +163,8 @@ async function handleTicketCreation(chatId: number, category: string, subCategor
       points,
       ticketNumber,
       technicianIds: [],
+      isTimerRunning: false,
+      timerStartedAt: null,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
@@ -456,7 +405,7 @@ async function initTelegramBot() {
         help += "`/close` - Update close order lapangan (format teks + foto)\n";
         help += "`/pelanggan` - Tambah pelanggan baru (format teks)\n";
         help += "`/addtiket` - Buat tiket baru (format teks)\n";
-        help += "`/addprojects` - Buat proyek baru (format teks)\n";
+        help += "`/addprojects` - Buat proyek baru (PID, Nama, Insera, Witel, Mitra, Lokasi)\n";
         help += "`/assign` - Assign tiket ke teknisi (format teks)\n";
         help += "`/projects` - List proyek aktif untuk update progres\n\n";
         
@@ -945,117 +894,6 @@ async function initTelegramBot() {
           bot?.sendMessage(chatId, `📸 *Tahap: ${stage}*\n\nSilakan kirimkan *FOTO EVIDEN* untuk tahap ini.\n\n_Anda juga bisa menambahkan caption pada foto tersebut._`, { parse_mode: 'Markdown' });
         }
 
-        // Add Project Multi-select Handlers
-        if (data.includes('_toggle_')) {
-          const [prefix, , option] = data.split('_');
-          const session = addProjectSessions.get(chatId);
-          if (!session) return;
-
-          let currentOptions: string[] = [];
-          if (prefix === 'ap_pra') currentOptions = session.evidenPra || [];
-          if (prefix === 'ap_pro') currentOptions = session.proses || [];
-          if (prefix === 'ap_pas') currentOptions = session.evidenPasca || [];
-
-          if (currentOptions.includes(option)) {
-            currentOptions = currentOptions.filter(o => o !== option);
-          } else {
-            currentOptions.push(option);
-          }
-
-          if (prefix === 'ap_pra') session.evidenPra = currentOptions;
-          if (prefix === 'ap_pro') session.proses = currentOptions;
-          if (prefix === 'ap_pas') session.evidenPasca = currentOptions;
-
-          addProjectSessions.set(chatId, session);
-
-          const title = prefix === 'ap_pra' ? 'EVIDEN PRA' : prefix === 'ap_pro' ? 'PROSES' : 'EVIDEN PASCA';
-          
-          try {
-            await bot?.editMessageText(`🏗️ *Tambah Proyek* 🏗️\n\nSilakan pilih opsi untuk *${title}*:\n\n_Terpilih: ${currentOptions.join(', ') || '-'}_`, {
-              chat_id: chatId,
-              message_id: query.message?.message_id,
-              parse_mode: 'Markdown',
-              reply_markup: createMultiSelectKeyboard(prefix, currentOptions)
-            });
-          } catch (e) {}
-          bot?.answerCallbackQuery(query.id);
-        }
-
-        if (data.endsWith('_done')) {
-          const prefix = data.split('_')[0] + '_' + data.split('_')[1];
-          const session = addProjectSessions.get(chatId);
-          if (!session) return;
-
-          if (prefix === 'ap_pra') {
-            session.stage = 'waiting_proses';
-            bot?.editMessageText(`🏗️ *Tambah Proyek* 🏗️\n\nSilakan pilih opsi untuk *PROSES*:`, {
-              chat_id: chatId,
-              message_id: query.message?.message_id,
-              parse_mode: 'Markdown',
-              reply_markup: createMultiSelectKeyboard('ap_pro')
-            });
-          } else if (prefix === 'ap_pro') {
-            session.stage = 'waiting_eviden_pasca_category';
-            bot?.editMessageText(`🏗️ *Tambah Proyek* 🏗️\n\nSilakan pilih kategori untuk *EVIDEN PASCA*:`, {
-              chat_id: chatId,
-              message_id: query.message?.message_id,
-              parse_mode: 'Markdown',
-              reply_markup: createCategoryKeyboard('ap_pas')
-            });
-          }
-          addProjectSessions.set(chatId, session);
-          bot?.answerCallbackQuery(query.id);
-        }
-
-        // EVIDEN PASCA Category Selection
-        if (data.startsWith('ap_pas_cat_')) {
-          const category = data.replace('ap_pas_cat_', '');
-          console.log(`[Bot] Category selected for EVIDEN PASCA: ${category} by ${chatId}`);
-          const session = addProjectSessions.get(chatId);
-          if (!session) {
-            console.warn(`[Bot] No addProjectSession found for ${chatId} during category selection`);
-            return;
-          }
-
-          session.currentEvidenPascaCategory = category;
-          session.stage = 'waiting_eviden_pasca_photo';
-          addProjectSessions.set(chatId, session);
-
-          bot?.editMessageText(`🏗️ *EVIDEN PASCA: ${category}*\n\nSilakan kirim *FOTO EVIDEN* untuk kategori ini:`, {
-            chat_id: chatId,
-            message_id: query.message?.message_id,
-            parse_mode: 'Markdown'
-          });
-          bot?.answerCallbackQuery(query.id);
-        }
-
-        if (data === 'ap_pas_more') {
-          const session = addProjectSessions.get(chatId);
-          if (!session) return;
-
-          session.stage = 'waiting_eviden_pasca_category';
-          addProjectSessions.set(chatId, session);
-
-          bot?.sendMessage(chatId, `🏗️ *Tambah Proyek* 🏗️\n\nSilakan pilih kategori lain untuk *EVIDEN PASCA*:`, {
-            parse_mode: 'Markdown',
-            reply_markup: createCategoryKeyboard('ap_pas')
-          });
-          bot?.answerCallbackQuery(query.id);
-        }
-
-        if (data === 'ap_pas_next') {
-          const session = addProjectSessions.get(chatId);
-          if (!session) return;
-
-          session.stage = 'waiting_hasil_ukur';
-          addProjectSessions.set(chatId, session);
-
-          bot?.sendMessage(chatId, `🏗️ *Tambah Proyek* 🏗️\n\nSilakan kirim *FOTO HASIL UKUR*:`, {
-            parse_mode: 'Markdown'
-          });
-          bot?.answerCallbackQuery(query.id);
-        }
-
         // Ticket Creation Flow
         if (data.startsWith('tkt_cat_')) {
           const category = data.replace('tkt_cat_', '');
@@ -1359,52 +1197,6 @@ async function initTelegramBot() {
       const caption = (msg.caption || '').trim();
 
       console.log(`[Bot] Received photo from ${chatId}, caption: "${caption}"`);
-
-      // 1. Check for add project session (interactive flow)
-      const apSession = addProjectSessions.get(chatId);
-      if (apSession) {
-        console.log(`[Bot] Active addProjectSession for ${chatId}, stage: ${apSession.stage}`);
-        
-        if (apSession.stage === 'waiting_eviden_pasca_category') {
-          bot?.sendMessage(chatId, "⚠️ *Pilih Kategori Terlebih Dahulu!*\n\nSilakan pilih kategori eviden pasca dari menu di atas sebelum mengirim foto.", { parse_mode: 'Markdown' });
-          return;
-        }
-
-        if (apSession.stage === 'waiting_eviden_pasca_photo') {
-          const category = apSession.currentEvidenPascaCategory || 'Uncategorized';
-          const photos = [...(apSession.evidenPascaPhotos || [])];
-          photos.push({ category, photoUrl });
-          addProjectSessions.set(chatId, { ...apSession, evidenPascaPhotos: photos });
-          
-          bot?.sendMessage(chatId, `📸 *Foto EVIDEN PASCA (${category}) Tersimpan.*\n\nSilakan kirim foto lagi untuk kategori ini, atau pilih opsi di bawah:`, {
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  { text: '➕ PILIH LAGI (Kategori Lain)', callback_data: 'ap_pas_more' },
-                  { text: '➡️ BERIKUTNYA', callback_data: 'ap_pas_next' }
-                ]
-              ]
-            }
-          });
-          return;
-        }
-        if (apSession.stage === 'waiting_hasil_ukur') {
-          addProjectSessions.set(chatId, { ...apSession, hasilUkurUrl: photoUrl, stage: 'waiting_material_tiba' });
-          bot?.sendMessage(chatId, "📸 *HASIL UKUR Tersimpan.*\n\nSilakan kirim *FOTO MATERIAL TIBA*:", { parse_mode: 'Markdown' });
-          return;
-        }
-        if (apSession.stage === 'waiting_material_tiba') {
-          addProjectSessions.set(chatId, { ...apSession, materialTibaUrl: photoUrl, stage: 'waiting_abd' });
-          bot?.sendMessage(chatId, "📸 *MATERIAL TIBA Tersimpan.*\n\nSilakan kirim *FOTO ABD*:", { parse_mode: 'Markdown' });
-          return;
-        }
-        if (apSession.stage === 'waiting_abd') {
-          addProjectSessions.set(chatId, { ...apSession, abdUrl: photoUrl, stage: 'waiting_ba_pendukung' });
-          bot?.sendMessage(chatId, "📸 *ABD Tersimpan.*\n\nSilakan kirim *DOKUMEN BA PENDUKUNG* (Format PDF):", { parse_mode: 'Markdown' });
-          return;
-        }
-      }
 
       // 2. Check for repair session (interactive flow)
       const repairSession = repairSessions.get(chatId);
@@ -1768,10 +1560,79 @@ async function initTelegramBot() {
     // /addprojects command
     bot.onText(/^\/addprojects/, async (msg) => {
       const chatId = msg.chat.id;
+      const text = msg.text || '';
       
-      // Start new interactive session
-      addProjectSessions.set(chatId, { stage: 'waiting_boq_rekon' });
-      bot.sendMessage(chatId, "🏗️ *Tambah Proyek Baru* 🏗️\n\nSilakan masukkan *BOQ REKON*:", { parse_mode: 'Markdown' });
+      const parts = text.split('\n').map(p => p.trim()).filter(p => p.length > 0);
+      
+      if (parts.length < 2) {
+        const template = "🏗️ *Format Tambah Proyek* 🏗️\n\n" +
+          "Silakan salin dan isi format di bawah ini:\n\n" +
+          "`/addprojects`\n" +
+          "PID: \n" +
+          "Nama: \n" +
+          "Tiket Insera: \n" +
+          "Witel: \n" +
+          "Mitra: \n" +
+          "Lokasi: ";
+        bot.sendMessage(chatId, template, { parse_mode: 'Markdown' });
+        return;
+      }
+
+      // Parsing logic
+      const data: any = {};
+      parts.forEach(line => {
+        if (line.includes(':')) {
+          const [key, ...val] = line.split(':');
+          const value = val.join(':').trim();
+          const cleanKey = key.trim().toLowerCase();
+          
+          if (cleanKey === 'pid') data.pid = value;
+          if (cleanKey === 'nama') data.projectName = value;
+          if (cleanKey.includes('insera')) data.tiketGamas = value;
+          if (cleanKey === 'witel') data.witel = value;
+          if (cleanKey === 'mitra') data.partner = value;
+          if (cleanKey === 'lokasi') data.location = value;
+        }
+      });
+
+      if (!data.pid || !data.projectName) {
+        bot.sendMessage(chatId, "⚠️ *Data tidak lengkap!*\n\nMohon pastikan `PID` dan `Nama` terisi.", { parse_mode: 'Markdown' });
+        return;
+      }
+
+      try {
+        const userDoc = await getAuthorizedUser(chatId);
+        if (!userDoc) return;
+
+        // Check if project already exists
+        const q = query(collection(db, 'projects'), where('pid', '==', data.pid));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          bot.sendMessage(chatId, `⚠️ *Proyek Sudah Ada!*\n\nPID \`${data.pid}\` sudah terdaftar di sistem.`, { parse_mode: 'Markdown' });
+          return;
+        }
+
+        await addDoc(collection(db, 'projects'), {
+          ...data,
+          description: data.projectName,
+          status: 'open',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          reportedBy: userDoc.id
+        });
+
+        let successMsg = `✅ *Proyek Berhasil Dibuat!*\n\n`;
+        successMsg += `PID: ${data.pid}\n`;
+        successMsg += `Nama: ${data.projectName}\n`;
+        successMsg += `Witel: ${data.witel || '-'}\n`;
+        successMsg += `Mitra: ${data.partner || '-'}\n`;
+        successMsg += `Lokasi: ${data.location || '-'}`;
+        
+        bot.sendMessage(chatId, successMsg, { parse_mode: 'Markdown' });
+      } catch (e: any) {
+        console.error("Error creating project:", e);
+        bot.sendMessage(chatId, `❌ *Gagal membuat proyek!*`);
+      }
     });
 
     // /assign command
@@ -1905,24 +1766,6 @@ async function initTelegramBot() {
       const text = msg.text;
       if (!text) return;
 
-      // Handle add project session (interactive flow)
-      const apSession = addProjectSessions.get(chatId);
-      if (apSession && !text.startsWith('/')) {
-        if (apSession.stage === 'waiting_boq_rekon') {
-          addProjectSessions.set(chatId, { ...apSession, boqRekon: text.trim(), stage: 'waiting_tiket_gamas' });
-          bot.sendMessage(chatId, "🏗️ *BOQ REKON Tersimpan.*\n\nSilakan masukkan *TIKET GAMAS*:", { parse_mode: 'Markdown' });
-          return;
-        }
-        if (apSession.stage === 'waiting_tiket_gamas') {
-          addProjectSessions.set(chatId, { ...apSession, tiketGamas: text.trim(), stage: 'waiting_eviden_pra' });
-          bot.sendMessage(chatId, "🏗️ *TIKET GAMAS Tersimpan.*\n\nSilakan pilih opsi untuk *EVIDEN PRA*:", {
-            parse_mode: 'Markdown',
-            reply_markup: createMultiSelectKeyboard('ap_pra')
-          });
-          return;
-        }
-      }
-
       // Handle repair session (interactive flow)
       const repairSession = repairSessions.get(chatId);
       if (repairSession && !text.startsWith('/')) {
@@ -2037,119 +1880,6 @@ async function initTelegramBot() {
         }
       } catch (error) {
         console.error("Dynamic Command Error:", error);
-      }
-    });
-
-    // Handle documents (PDF for BA PENDUKUNG)
-    bot.on('document', async (msg) => {
-      const chatId = msg.chat.id;
-      const apSession = addProjectSessions.get(chatId);
-      
-      if (apSession && apSession.stage === 'waiting_ba_pendukung') {
-        if (msg.document?.mime_type !== 'application/pdf') {
-          bot?.sendMessage(chatId, "⚠️ *Format Salah!*\n\nMohon kirimkan dokumen dalam format *PDF*.");
-          return;
-        }
-
-        const fileId = msg.document.file_id;
-        const fileUrl = `/api/telegram-photo/${fileId}`; // We can use the same proxy for documents
-        
-        try {
-          const userDoc = await getAuthorizedUser(chatId);
-          if (!userDoc) throw new Error("Unauthorized");
-
-          // Finalize Project Creation
-          const pid = `PRJ-${Date.now().toString().slice(-6)}`;
-          const projectName = `Proyek ${apSession.tiketGamas || apSession.boqRekon || pid}`;
-          
-  const evidenPascaOptions = apSession.evidenPascaPhotos 
-    ? Array.from(new Set(apSession.evidenPascaPhotos.map(p => p.category)))
-    : (apSession.evidenPasca || []);
-
-  const projectData = {
-    pid,
-    projectName,
-    description: projectName,
-    boqRekon: apSession.boqRekon,
-    tiketGamas: apSession.tiketGamas,
-    baPendukungUrl: fileUrl,
-    evidenPraOptions: apSession.evidenPra || [],
-    prosesOptions: apSession.proses || [],
-    evidenPascaOptions,
-    status: 'open',
-    evidence: [] as any[],
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
-  };
-
-          // Add evidence items for each stage
-          if (apSession.evidenPra && apSession.evidenPra.length > 0) {
-            projectData.evidence.push({
-              stage: 'EVIDEN PRA',
-              caption: `Selected: ${apSession.evidenPra.join(', ')}`,
-              timestamp: Timestamp.now(),
-              reportedBy: userDoc.data().name || 'Technician'
-            });
-          }
-          if (apSession.proses && apSession.proses.length > 0) {
-            projectData.evidence.push({
-              stage: 'PROSES',
-              caption: `Selected: ${apSession.proses.join(', ')}`,
-              timestamp: Timestamp.now(),
-              reportedBy: userDoc.data().name || 'Technician'
-            });
-          }
-          if (apSession.evidenPascaPhotos && apSession.evidenPascaPhotos.length > 0) {
-            apSession.evidenPascaPhotos.forEach(p => {
-              projectData.evidence.push({
-                stage: 'EVIDEN PASCA',
-                photoUrl: p.photoUrl,
-                caption: `Kategori: ${p.category}`,
-                timestamp: Timestamp.now(),
-                reportedBy: userDoc.data().name || 'Technician'
-              });
-            });
-          } else if (apSession.evidenPasca && apSession.evidenPasca.length > 0) {
-            projectData.evidence.push({
-              stage: 'EVIDEN PASCA',
-              caption: `Selected: ${apSession.evidenPasca.join(', ')}`,
-              timestamp: Timestamp.now(),
-              reportedBy: userDoc.data().name || 'Technician'
-            });
-          }
-          if (apSession.hasilUkurUrl) {
-            projectData.evidence.push({
-              stage: 'HASIL UKUR',
-              photoUrl: apSession.hasilUkurUrl,
-              timestamp: Timestamp.now(),
-              reportedBy: userDoc.data().name || 'Technician'
-            });
-          }
-          if (apSession.materialTibaUrl) {
-            projectData.evidence.push({
-              stage: 'MATERIAL TIBA',
-              photoUrl: apSession.materialTibaUrl,
-              timestamp: Timestamp.now(),
-              reportedBy: userDoc.data().name || 'Technician'
-            });
-          }
-          if (apSession.abdUrl) {
-            projectData.evidence.push({
-              stage: 'ABD',
-              photoUrl: apSession.abdUrl,
-              timestamp: Timestamp.now(),
-              reportedBy: userDoc.data().name || 'Technician'
-            });
-          }
-
-          await addDoc(collection(db, 'projects'), projectData);
-          
-          bot?.sendMessage(chatId, "✅ *Proyek Berhasil Dibuat!*\n\nSemua data dan eviden telah tersimpan ke sistem.", { parse_mode: 'Markdown' });
-          addProjectSessions.delete(chatId);
-        } catch (e: any) {
-          console.error("Error finalizing project from Telegram:", e);
-          bot?.sendMessage(chatId, "❌ *Gagal menyimpan proyek.*");
-        }
       }
     });
 

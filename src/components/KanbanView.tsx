@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Ticket, TicketStatus, TicketPriority } from '../types';
 import { stripHtml } from '../lib/textUtils';
+import { getSLARemainingTime } from '../lib/slaUtils';
 import { 
   CheckCircle2,
   AlertCircle,
@@ -177,13 +178,8 @@ export default function KanbanView({
                     
                     {(() => {
                       const sla = getSLAStatus(ticket);
-                      const deadline = ticket.slaDeadline instanceof Timestamp ? ticket.slaDeadline.toDate() : (ticket.slaDeadline ? new Date(ticket.slaDeadline) : null);
-                      if (!deadline) return null;
-                      
-                      const now = new Date();
-                      const diff = deadline.getTime() - now.getTime();
-                      const hours = Math.floor(Math.abs(diff) / (1000 * 60 * 60));
-                      const mins = Math.floor((Math.abs(diff) % (1000 * 60 * 60)) / (1000 * 60));
+                      const remaining = getSLARemainingTime(ticket);
+                      if (!remaining) return null;
 
                       return (
                         <div className={`flex items-center gap-1 text-[10px] font-bold ${
@@ -192,7 +188,7 @@ export default function KanbanView({
                           'text-emerald-500'
                         }`}>
                           <Clock size={10} />
-                          {sla === 'breached' ? `Breached ${hours}h ${mins}m ago` : `${hours}h ${mins}m left`}
+                          {sla === 'breached' ? `Breached ${remaining.hours}h ${remaining.mins}m ago` : `${remaining.hours}h ${remaining.mins}m left`}
                         </div>
                       );
                     })()}

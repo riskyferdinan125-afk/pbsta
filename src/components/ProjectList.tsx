@@ -43,7 +43,10 @@ import {
   Eye,
   FileDown,
   Sparkles,
-  Database
+  Database,
+  LayoutGrid,
+  GalleryHorizontal,
+  Maximize
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
@@ -98,6 +101,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
     evidenPascaOptions: [] as string[],
     inseraTicketIds: [] as string[],
     activityCost: 0,
+    estimatedDuration: 0,
   });
   const [selectedMaterials, setSelectedMaterials] = useState<ProjectMaterial[]>([]);
   const [selectedJobs, setSelectedJobs] = useState<ProjectJob[]>([]);
@@ -808,6 +812,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
         evidenPascaOptions: project.evidenPascaOptions || [],
         inseraTicketIds: project.inseraTicketIds || [],
         activityCost: project.activityCost || 0,
+        estimatedDuration: project.estimatedDuration || 0,
       });
       setSelectedMaterials(project.materials || []);
       setSelectedJobs(project.jobs || []);
@@ -832,6 +837,7 @@ export default function ProjectList({ profile }: ProjectListProps) {
         evidenPascaOptions: [],
         inseraTicketIds: [],
         activityCost: 0,
+        estimatedDuration: 0,
       });
       setSelectedMaterials([]);
       setSelectedJobs([]);
@@ -1360,6 +1366,15 @@ export default function ProjectList({ profile }: ProjectListProps) {
                   </div>
                   <div className="bg-neutral-50 rounded-xl p-3 border border-black/5 shadow-sm">
                     <div className="flex items-center gap-1.5 text-[10px] font-bold text-neutral-400 uppercase mb-1.5">
+                      <Clock className="w-3 h-3 text-indigo-500" />
+                      Duration
+                    </div>
+                    <div className="text-sm font-bold text-neutral-900">
+                      {project.estimatedDuration || 0} Days
+                    </div>
+                  </div>
+                  <div className="bg-neutral-50 rounded-xl p-3 border border-black/5 shadow-sm">
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-neutral-400 uppercase mb-1.5">
                       <Camera className="w-3 h-3 text-amber-500" />
                       Evidence
                     </div>
@@ -1555,16 +1570,30 @@ export default function ProjectList({ profile }: ProjectListProps) {
                                 className={`p-1.5 rounded-md transition-all ${galleryViewMode === 'grid' ? 'bg-white shadow-sm text-emerald-600' : 'text-neutral-400 hover:text-neutral-600'}`}
                                 title="Grid View"
                               >
-                                <Activity className="w-4 h-4" />
+                                <LayoutGrid className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={() => setGalleryViewMode('carousel')}
                                 className={`p-1.5 rounded-md transition-all ${galleryViewMode === 'carousel' ? 'bg-white shadow-sm text-emerald-600' : 'text-neutral-400 hover:text-neutral-600'}`}
                                 title="Carousel View"
                               >
-                                <ChevronRight className="w-4 h-4" />
+                                <GalleryHorizontal className="w-4 h-4" />
                               </button>
                             </div>
+
+                            <button
+                              onClick={() => {
+                                const projectEvidence = getProjectEvidence(project);
+                                if (projectEvidence.length > 0) {
+                                  setActiveProjectForGallery(project);
+                                  setSelectedPhotoIndex(0);
+                                }
+                              }}
+                              className="p-2 bg-neutral-100 text-neutral-600 rounded-lg hover:bg-neutral-200 transition-all"
+                              title="Open Fullscreen Gallery"
+                            >
+                              <Maximize className="w-4 h-4" />
+                            </button>
                             
                             <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 no-scrollbar">
                             {(() => {
@@ -1646,148 +1675,160 @@ export default function ProjectList({ profile }: ProjectListProps) {
                         {(() => {
                           const projectEvidence = getProjectEvidence(project);
                           if (projectEvidence.length > 0) {
-                            const stages = Array.from(new Set(projectEvidence.map(e => e.stage)));
-                            return (
-                              <div className="space-y-8">
-                                {stages.map(stage => {
-                                  const stagePhotos = projectEvidence.filter(e => e.stage === stage);
-                                  return (
-                                    <div key={stage} id={`stage-${stage}-${project.id}`} className="space-y-4">
-                                      <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                          <div className="w-1 h-4 bg-emerald-500 rounded-full" />
-                                          <h5 className="text-[11px] font-bold text-neutral-700 uppercase tracking-widest">
-                                            {stage}
-                                          </h5>
-                                          <span className="text-[10px] font-medium text-neutral-400 bg-neutral-100 px-2 py-0.5 rounded-full">
-                                            {stagePhotos.length} Photos
-                                          </span>
-                                        </div>
-                                      </div>
-                                      
-                                      {galleryViewMode === 'grid' ? (
-                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                                          {stagePhotos.map((item, idx) => {
-                                            const globalIdx = projectEvidence.findIndex(ae => ae.photoUrl === item.photoUrl);
-                                            return (
-                                              <motion.div 
-                                                key={idx} 
-                                                whileHover={{ scale: 1.02, y: -4 }}
-                                                whileTap={{ scale: 0.98 }}
-                                                className="group cursor-pointer relative aspect-square"
-                                                onClick={() => {
-                                                  setActiveProjectForGallery(project);
-                                                  setSelectedPhotoIndex(globalIdx);
-                                                }}
-                                              >
-                                                <div className="absolute inset-0 bg-neutral-200 animate-pulse rounded-2xl" />
-                                                <img 
-                                                  src={resolvePhotoUrl(item.photoUrl)} 
-                                                  alt={item.stage} 
-                                                  className="absolute inset-0 w-full h-full object-cover rounded-2xl border border-black/5 shadow-sm transition-all duration-500 group-hover:shadow-md"
-                                                  referrerPolicy="no-referrer"
-                                                  onLoad={(e) => (e.currentTarget.previousElementSibling as HTMLElement).style.display = 'none'}
-                                                />
-                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-2xl flex flex-col items-center justify-center text-white gap-2">
-                                                  <div className="p-2 bg-white/20 backdrop-blur-md rounded-full transform scale-75 group-hover:scale-100 transition-transform duration-300">
-                                                    <Eye className="w-4 h-4" />
-                                                  </div>
-                                                  <span className="text-[10px] font-bold uppercase tracking-tighter">View Detail</span>
-                                                </div>
-                                                
-                                                {/* Caption Preview on Hover */}
-                                                {item.caption && (
-                                                  <div className="absolute bottom-2 left-2 right-2 p-2 bg-black/60 backdrop-blur-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity translate-y-2 group-hover:translate-y-0 duration-300">
-                                                    <p className="text-[9px] text-white font-medium line-clamp-1">
-                                                      {item.caption}
-                                                    </p>
-                                                  </div>
-                                                )}
-                                              </motion.div>
-                                            );
-                                          })}
-                                        </div>
-                                      ) : (
-                                        <div className="relative group/carousel">
-                                          <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar snap-x scroll-smooth">
-                                            {stagePhotos.map((item, idx) => {
-                                              const globalIdx = projectEvidence.findIndex(ae => ae.photoUrl === item.photoUrl);
-                                              return (
-                                                <motion.div 
-                                                  key={idx} 
-                                                  whileHover={{ scale: 1.02 }}
-                                                  whileTap={{ scale: 0.98 }}
-                                                  className="flex-none w-48 sm:w-64 aspect-[4/3] group cursor-pointer relative snap-start"
-                                                  onClick={() => {
-                                                    setActiveProjectForGallery(project);
-                                                    setSelectedPhotoIndex(globalIdx);
-                                                  }}
-                                                >
-                                                  <div className="absolute inset-0 bg-neutral-200 animate-pulse rounded-2xl" />
-                                                  <img 
-                                                    src={resolvePhotoUrl(item.photoUrl)} 
-                                                    alt={item.stage} 
-                                                    className="absolute inset-0 w-full h-full object-cover rounded-2xl border border-black/5 shadow-sm transition-all duration-500 group-hover:shadow-md"
-                                                    referrerPolicy="no-referrer"
-                                                    onLoad={(e) => (e.currentTarget.previousElementSibling as HTMLElement).style.display = 'none'}
-                                                  />
-                                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-2xl flex flex-col items-center justify-center text-white gap-2">
-                                                    <div className="p-2 bg-white/20 backdrop-blur-md rounded-full">
-                                                      <Eye className="w-4 h-4" />
-                                                    </div>
-                                                    <span className="text-[10px] font-bold uppercase tracking-tighter">View Detail</span>
-                                                  </div>
-                                                  
-                                                  <div className="absolute top-2 left-2 px-2 py-1 bg-black/40 backdrop-blur-md rounded-lg text-[8px] font-bold text-white uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    {(() => {
-                                                      const date = item.timestamp instanceof Timestamp ? item.timestamp.toDate() : 
-                                                                  (item.timestamp as any)?.toDate ? (item.timestamp as any).toDate() : 
-                                                                  new Date(item.timestamp);
-                                                      return date.toLocaleDateString();
-                                                    })()}
-                                                  </div>
+                            // Filter photos based on selected stage, unless 'Initial' is selected (which we use as 'All')
+                            const filteredPhotos = selectedStage === 'Initial' 
+                              ? projectEvidence 
+                              : projectEvidence.filter(e => e.stage === selectedStage);
 
-                                                  {/* Caption Preview on Hover */}
-                                                  {item.caption && (
-                                                    <div className="absolute bottom-2 left-2 right-2 p-2 bg-black/60 backdrop-blur-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity translate-y-2 group-hover:translate-y-0 duration-300">
-                                                      <p className="text-[9px] text-white font-medium line-clamp-1">
-                                                        {item.caption}
-                                                      </p>
-                                                    </div>
-                                                  )}
-                                                </motion.div>
-                                              );
-                                            })}
+                            return (
+                              <div className="space-y-6">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-1 h-4 bg-emerald-500 rounded-full" />
+                                    <h5 className="text-[11px] font-bold text-neutral-700 uppercase tracking-widest">
+                                      {selectedStage === 'Initial' ? 'All Photos' : selectedStage}
+                                    </h5>
+                                    <span className="text-[10px] font-medium text-neutral-400 bg-neutral-100 px-2 py-0.5 rounded-full">
+                                      {filteredPhotos.length} Photos
+                                    </span>
+                                  </div>
+                                </div>
+                                
+                                {galleryViewMode === 'grid' ? (
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                    {filteredPhotos.map((item, idx) => {
+                                      const globalIdx = projectEvidence.findIndex(ae => ae.photoUrl === item.photoUrl);
+                                      return (
+                                        <motion.div 
+                                          key={idx} 
+                                          initial={{ opacity: 0, y: 10 }}
+                                          animate={{ opacity: 1, y: 0 }}
+                                          transition={{ delay: idx * 0.05 }}
+                                          whileHover={{ scale: 1.02, y: -4 }}
+                                          whileTap={{ scale: 0.98 }}
+                                          className="group cursor-pointer relative aspect-square"
+                                          onClick={() => {
+                                            setActiveProjectForGallery(project);
+                                            setSelectedPhotoIndex(globalIdx);
+                                          }}
+                                        >
+                                          <div className="absolute inset-0 bg-neutral-200 animate-pulse rounded-2xl" />
+                                          <img 
+                                            src={resolvePhotoUrl(item.photoUrl)} 
+                                            alt={item.stage} 
+                                            className="absolute inset-0 w-full h-full object-cover rounded-2xl border border-black/5 shadow-sm transition-all duration-500 group-hover:shadow-md"
+                                            referrerPolicy="no-referrer"
+                                            onLoad={(e) => (e.currentTarget.previousElementSibling as HTMLElement).style.display = 'none'}
+                                          />
+                                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-2xl flex flex-col items-center justify-center text-white gap-2">
+                                            <div className="p-2 bg-white/20 backdrop-blur-md rounded-full transform scale-75 group-hover:scale-100 transition-transform duration-300">
+                                              <Eye className="w-4 h-4" />
+                                            </div>
+                                            <span className="text-[10px] font-bold uppercase tracking-tighter">View Detail</span>
                                           </div>
                                           
-                                          {/* Carousel Navigation Arrows */}
-                                          <div className="absolute top-1/2 -translate-y-1/2 left-2 right-2 flex justify-between pointer-events-none opacity-0 group-hover/carousel:opacity-100 transition-opacity">
-                                            <button 
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                const container = e.currentTarget.parentElement?.previousElementSibling;
-                                                container?.scrollBy({ left: -200, behavior: 'smooth' });
-                                              }}
-                                              className="p-2 bg-white/90 backdrop-blur-md rounded-full shadow-lg pointer-events-auto hover:bg-white transition-colors text-neutral-600"
-                                            >
-                                              <ChevronLeft className="w-4 h-4" />
-                                            </button>
-                                            <button 
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                const container = e.currentTarget.parentElement?.previousElementSibling;
-                                                container?.scrollBy({ left: 200, behavior: 'smooth' });
-                                              }}
-                                              className="p-2 bg-white/90 backdrop-blur-md rounded-full shadow-lg pointer-events-auto hover:bg-white transition-colors text-neutral-600"
-                                            >
-                                              <ChevronRight className="w-4 h-4" />
-                                            </button>
+                                          <div className="absolute top-2 left-2 px-2 py-1 bg-black/40 backdrop-blur-md rounded-lg text-[7px] font-bold text-white uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
+                                            {item.stage}
                                           </div>
-                                        </div>
-                                      )}
+
+                                          {/* Caption Preview on Hover */}
+                                          {item.caption && (
+                                            <div className="absolute bottom-2 left-2 right-2 p-2 bg-black/60 backdrop-blur-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity translate-y-2 group-hover:translate-y-0 duration-300">
+                                              <p className="text-[9px] text-white font-medium line-clamp-1">
+                                                {item.caption}
+                                              </p>
+                                            </div>
+                                          )}
+                                        </motion.div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="relative group/carousel">
+                                    <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar snap-x scroll-smooth">
+                                      {filteredPhotos.map((item, idx) => {
+                                        const globalIdx = projectEvidence.findIndex(ae => ae.photoUrl === item.photoUrl);
+                                        return (
+                                          <motion.div 
+                                            key={idx} 
+                                            initial={{ opacity: 0, x: 20 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            transition={{ delay: idx * 0.05 }}
+                                            whileHover={{ scale: 1.02 }}
+                                            whileTap={{ scale: 0.98 }}
+                                            className="flex-none w-64 sm:w-80 aspect-[4/3] group cursor-pointer relative snap-start"
+                                            onClick={() => {
+                                              setActiveProjectForGallery(project);
+                                              setSelectedPhotoIndex(globalIdx);
+                                            }}
+                                          >
+                                            <div className="absolute inset-0 bg-neutral-200 animate-pulse rounded-2xl" />
+                                            <img 
+                                              src={resolvePhotoUrl(item.photoUrl)} 
+                                              alt={item.stage} 
+                                              className="absolute inset-0 w-full h-full object-cover rounded-2xl border border-black/5 shadow-sm transition-all duration-500 group-hover:shadow-md"
+                                              referrerPolicy="no-referrer"
+                                              onLoad={(e) => (e.currentTarget.previousElementSibling as HTMLElement).style.display = 'none'}
+                                            />
+                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-2xl flex flex-col items-center justify-center text-white gap-2">
+                                              <div className="p-2 bg-white/20 backdrop-blur-md rounded-full">
+                                                <Eye className="w-5 h-5" />
+                                              </div>
+                                              <span className="text-xs font-bold uppercase tracking-widest">View Detail</span>
+                                            </div>
+                                            
+                                            <div className="absolute top-3 left-3 flex flex-col gap-1">
+                                              <div className="px-2 py-1 bg-black/40 backdrop-blur-md rounded-lg text-[8px] font-bold text-white uppercase tracking-widest">
+                                                {item.stage}
+                                              </div>
+                                              <div className="px-2 py-1 bg-black/40 backdrop-blur-md rounded-lg text-[8px] font-bold text-white uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
+                                                {(() => {
+                                                  const date = item.timestamp instanceof Timestamp ? item.timestamp.toDate() : 
+                                                              (item.timestamp as any)?.toDate ? (item.timestamp as any).toDate() : 
+                                                              new Date(item.timestamp);
+                                                  return date.toLocaleDateString();
+                                                })()}
+                                              </div>
+                                            </div>
+
+                                            {/* Caption Preview on Hover */}
+                                            {item.caption && (
+                                              <div className="absolute bottom-3 left-3 right-3 p-3 bg-black/60 backdrop-blur-sm rounded-xl opacity-0 group-hover:opacity-100 transition-opacity translate-y-2 group-hover:translate-y-0 duration-300">
+                                                <p className="text-xs text-white font-medium line-clamp-2">
+                                                  {item.caption}
+                                                </p>
+                                              </div>
+                                            )}
+                                          </motion.div>
+                                        );
+                                      })}
                                     </div>
-                                  );
-                                })}
+                                    
+                                    {/* Carousel Navigation Arrows */}
+                                    <div className="absolute top-1/2 -translate-y-1/2 left-2 right-2 flex justify-between pointer-events-none opacity-0 group-hover/carousel:opacity-100 transition-opacity">
+                                      <button 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const container = e.currentTarget.parentElement?.previousElementSibling;
+                                          container?.scrollBy({ left: -300, behavior: 'smooth' });
+                                        }}
+                                        className="p-3 bg-white/90 backdrop-blur-md rounded-full shadow-xl pointer-events-auto hover:bg-white transition-all text-neutral-600 active:scale-90"
+                                      >
+                                        <ChevronLeft className="w-5 h-5" />
+                                      </button>
+                                      <button 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const container = e.currentTarget.parentElement?.previousElementSibling;
+                                          container?.scrollBy({ left: 300, behavior: 'smooth' });
+                                        }}
+                                        className="p-3 bg-white/90 backdrop-blur-md rounded-full shadow-xl pointer-events-auto hover:bg-white transition-all text-neutral-600 active:scale-90"
+                                      >
+                                        <ChevronRight className="w-5 h-5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             );
                           }
@@ -2270,6 +2311,16 @@ export default function ProjectList({ profile }: ProjectListProps) {
                           value={formData.activityCost}
                           onChange={(e) => setFormData({ ...formData, activityCost: Number(e.target.value) })}
                           className="w-full px-4 py-2 bg-neutral-50 border border-black/5 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-700 mb-1">Estimated Duration (Days)</label>
+                        <input
+                          type="number"
+                          value={formData.estimatedDuration}
+                          onChange={(e) => setFormData({ ...formData, estimatedDuration: Number(e.target.value) })}
+                          className="w-full px-4 py-2 bg-neutral-50 border border-black/5 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                          placeholder="e.g. 7"
                         />
                       </div>
                     </div>

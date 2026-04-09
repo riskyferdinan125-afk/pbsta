@@ -40,6 +40,7 @@ import {
   Activity as ActivityIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { calculateSLAStatus, getSLAStatusColor, getSLAStatusLabel, getSLARemainingTime } from '../lib/slaUtils';
 import RepairRecordForm from './RepairRecordForm';
 import TicketDetailsModal from './TicketDetailsModal';
 import TicketSelector from './TicketSelector';
@@ -52,16 +53,25 @@ import BulkUpdateModal from './BulkUpdateModal';
 import AssignmentModal from './AssignmentModal';
 import ConfirmationModal from './ConfirmationModal';
 import { getTechnicianSuggestions } from '../lib/assignmentUtils';
+import { notifyTechnicians } from '../lib/notificationService';
 
 import { useToast } from './Toast';
 
 interface TicketListProps {
   initialCustomerId?: string | null;
+  initialTicketId?: string | null;
   onClearInitialCustomer?: () => void;
+  onClearInitialTicket?: () => void;
   profile?: UserProfile | null;
 }
 
-export default function TicketList({ initialCustomerId, onClearInitialCustomer, profile }: TicketListProps) {
+export default function TicketList({ 
+  initialCustomerId, 
+  initialTicketId,
+  onClearInitialCustomer, 
+  onClearInitialTicket,
+  profile 
+}: TicketListProps) {
   const resolvePhotoUrl = (url: string) => {
     if (!url) return '';
     if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('/')) return url;
@@ -97,6 +107,7 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
     technicianIds: [],
   });
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
+  const [showFilters, setShowFilters] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -124,6 +135,17 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
   });
   const [customerSearch, setCustomerSearch] = useState('');
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    if (initialTicketId && tickets.length > 0) {
+      const ticket = tickets.find(t => t.id === initialTicketId);
+      if (ticket) {
+        setSelectedTicket(ticket);
+        setIsDetailsModalOpen(true);
+        onClearInitialTicket?.();
+      }
+    }
+  }, [initialTicketId, tickets, onClearInitialTicket]);
 
   useEffect(() => {
     if (selectedTicket) {
@@ -224,7 +246,7 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
 
   const canManage = profile?.role === 'superadmin' || profile?.role === 'admin';
   const isTechnician = profile?.role === 'teknisi';
-  const myTechnicianId = technicians.find(t => t.email === auth.currentUser?.email)?.id;
+  const myTechnicianId = profile?.uid;
 
   const saveTicket = async () => {
     try {
@@ -274,6 +296,18 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
         changedBy: profile?.name || auth.currentUser?.email || 'Unknown',
         timestamp: serverTimestamp()
       });
+
+      // Notify assigned technicians
+      if (newTicket.technicianIds.length > 0) {
+        await notifyTechnicians(
+          newTicket.technicianIds,
+          'New Ticket Assigned',
+          `You have been assigned to a new ticket #${ticketNumber}: ${newTicket.description.slice(0, 50)}...`,
+          'info',
+          'newTicket',
+          `/tickets?id=${ticketRef.id}`
+        );
+      }
 
       setIsModalOpen(false);
       setNewTicket({ customerId: '', description: '', priority: 'medium', category: 'PROJECT', subCategory: '', status: 'open', technicianIds: [], dueDate: '', dependsOn: [], email: '' });
@@ -423,6 +457,19 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
 
       await updateDoc(doc(db, 'tickets', id), updates);
 
+      // Notify newly assigned technicians
+      const newlyAssigned = newTechIds.filter(tid => !oldTechIds.includes(tid));
+      if (newlyAssigned.length > 0) {
+        await notifyTechnicians(
+          newlyAssigned,
+          'New Ticket Assigned',
+          `You have been assigned to ticket #${ticketData.ticketNumber}: ${ticketData.description.slice(0, 50)}...`,
+          'info',
+          'newTicket',
+          `/tickets?id=${id}`
+        );
+      }
+
       const type = oldTechIds.includes(technicianId) ? 'technician_removed' : 'technician_added';
       
       await addDoc(collection(db, 'ticketHistory'), {
@@ -461,7 +508,7 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
 
       await updateDoc(doc(db, 'tickets', id), {
         isTimerRunning: true,
-        timerStartedAt: serverTimestamp(),
+        timerStartedAt: new Date().toISOString(),
         updatedAt: serverTimestamp()
       });
 
@@ -485,7 +532,11 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
       const ticket = tickets.find(t => t.id === id);
       if (!ticket || !ticket.timerStartedAt) return;
 
-      const startTime = ticket.timerStartedAt.toDate();
+      const timerStartedAt = ticket.timerStartedAt;
+      const startTime = typeof timerStartedAt === 'string' 
+        ? new Date(timerStartedAt) 
+        : (timerStartedAt as any).toDate();
+      
       const endTime = new Date();
       const diffMinutes = Math.round((endTime.getTime() - startTime.getTime()) / 60000);
       const totalTime = (ticket.totalTimeSpent || 0) + diffMinutes;
@@ -807,21 +858,7 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
       .filter(Boolean)
   )) as string[];
 
-  const getSLAStatus = (ticket: Ticket) => {
-    if (ticket.status === 'resolved' || ticket.status === 'closed') return 'within-sla';
-    if (!ticket.slaDeadline) return 'within-sla';
-
-    const now = new Date();
-    const deadline = ticket.slaDeadline instanceof Timestamp ? ticket.slaDeadline.toDate() : new Date(ticket.slaDeadline);
-    
-    if (now > deadline) return 'breached';
-    
-    // Near breach if less than 1 hour remaining
-    const diff = deadline.getTime() - now.getTime();
-    if (diff < 1 * 60 * 60 * 1000) return 'near-breach';
-    
-    return 'within-sla';
-  };
+  const getSLAStatus = (ticket: Ticket) => calculateSLAStatus(ticket);
 
   const filteredTickets = tickets.filter(t => {
     const customer = customers.find(c => c.id === t.customerId);
@@ -893,6 +930,21 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
           )}
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
+              showFilters || statusFilter !== 'all' || priorityFilter !== 'all' || categoryFilter !== 'all' || technicianFilter !== 'all'
+                ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                : 'bg-white text-neutral-600 border-black/5 hover:bg-neutral-50'
+            }`}
+          >
+            <Filter className="w-4 h-4" />
+            Filters
+            {(statusFilter !== 'all' || priorityFilter !== 'all' || categoryFilter !== 'all' || technicianFilter !== 'all') && (
+              <span className="w-2 h-2 bg-emerald-500 rounded-full" />
+            )}
+          </button>
+
           <AnimatePresence>
             {selectedTicketIds.length > 0 && canManage && (
               <motion.div
@@ -928,19 +980,19 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
               </motion.div>
             )}
           </AnimatePresence>
-          {profile?.role === 'teknisi' && (
-            <button
-              onClick={() => setTechnicianFilter(technicianFilter === 'my' ? 'all' : 'my')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
-                technicianFilter === 'my'
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-600/20'
-                  : 'bg-white text-neutral-600 border-black/5 hover:bg-neutral-50'
-              }`}
-            >
-              <UserCheck className="w-4 h-4" />
-              My Tickets
-            </button>
-          )}
+          
+          <button
+            onClick={() => setTechnicianFilter(technicianFilter === 'my' ? 'all' : 'my')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
+              technicianFilter === 'my'
+                ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-600/20'
+                : 'bg-white text-neutral-600 border-black/5 hover:bg-neutral-50'
+            }`}
+          >
+            <UserCheck className="w-4 h-4" />
+            My Tickets
+          </button>
+
           <div className="flex items-center bg-white border border-black/5 rounded-xl p-1">
             <button
               onClick={() => setViewMode('list')}
@@ -978,6 +1030,98 @@ export default function TicketList({ initialCustomerId, onClearInitialCustomer, 
           )}
         </div>
       </div>
+
+      <AnimatePresence>
+        {showFilters && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="bg-white p-6 rounded-2xl border border-black/5 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider ml-1">Status</label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as any)}
+                  className="w-full px-3 py-2 bg-neutral-50 border border-black/5 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                >
+                  <option value="all">All Status</option>
+                  <option value="open">Open</option>
+                  <option value="in-progress">In Progress</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="closed">Closed</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider ml-1">Priority</label>
+                <select
+                  value={priorityFilter}
+                  onChange={(e) => setPriorityFilter(e.target.value as any)}
+                  className="w-full px-3 py-2 bg-neutral-50 border border-black/5 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                >
+                  <option value="all">All Priority</option>
+                  <option value="urgent">Urgent</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider ml-1">Category</label>
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => {
+                    setCategoryFilter(e.target.value as any);
+                    setSubCategoryFilter('all');
+                  }}
+                  className="w-full px-3 py-2 bg-neutral-50 border border-black/5 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                >
+                  <option value="all">All Category</option>
+                  <option value="PROJECT">Project</option>
+                  <option value="REGULER">Reguler</option>
+                  <option value="PSB">PSB</option>
+                  <option value="SQM">SQM</option>
+                  <option value="UNSPEKS">Unspeks</option>
+                  <option value="EXBIS">Exbis</option>
+                  <option value="CORRECTIVE">Corrective</option>
+                  <option value="PREVENTIVE">Preventive</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider ml-1">Technician</label>
+                <select
+                  value={technicianFilter}
+                  onChange={(e) => setTechnicianFilter(e.target.value)}
+                  className="w-full px-3 py-2 bg-neutral-50 border border-black/5 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                >
+                  <option value="all">All Technicians</option>
+                  <option value="my">My Tickets</option>
+                  <option value="unassigned">Unassigned</option>
+                  {technicians.map(tech => (
+                    <option key={tech.id} value={tech.id}>{tech.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-end">
+                <button
+                  onClick={resetFilters}
+                  className="w-full px-4 py-2 bg-neutral-100 text-neutral-600 rounded-xl text-xs font-bold hover:bg-neutral-200 transition-all flex items-center justify-center gap-2"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Reset Filters
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {viewMode === 'kanban' ? (
         <KanbanView 

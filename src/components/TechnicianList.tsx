@@ -56,11 +56,12 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
     availabilityStatus: 'Available' as any,
     workingDays: [] as string[],
     workingHours: '',
-    skills: '',
+    skills: [] as string[],
     specialization: '',
     bio: ''
   });
 
+  const [skillInput, setSkillInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -89,11 +90,9 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
     if (!formData.workingHours.trim()) { setError('Working hours are required'); return; }
 
     try {
-      const skillsArray = formData.skills.split(',').map(s => s.trim()).filter(Boolean);
       const { password, ...otherData } = formData;
       const dataToSave: any = {
         ...otherData,
-        skills: skillsArray,
         updatedAt: serverTimestamp()
       };
 
@@ -211,14 +210,15 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
         availabilityStatus: tech.availabilityStatus || 'Available',
         workingDays: tech.workingDays || [],
         workingHours: tech.workingHours || '',
-        skills: tech.skills?.join(', ') || '',
+        skills: tech.skills || [],
         specialization: tech.specialization || '',
         bio: tech.bio || ''
       });
     } else {
       setEditingTech(null);
-      setFormData({ name: '', nik: '', email: '', phone: '', telegramId: '', address: '', title: '', role: 'teknisi', password: '', photoURL: '', availabilityStatus: 'Available', workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'], workingHours: '08:00-17:00', skills: '', specialization: '', bio: '' });
+      setFormData({ name: '', nik: '', email: '', phone: '', telegramId: '', address: '', title: '', role: 'teknisi', password: '', photoURL: '', availabilityStatus: 'Available', workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'], workingHours: '08:00-17:00', skills: [], specialization: '', bio: '' });
     }
+    setSkillInput('');
     setIsModalOpen(true);
     setError(null);
   };
@@ -226,9 +226,28 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingTech(null);
-    setFormData({ name: '', nik: '', email: '', phone: '', telegramId: '', address: '', title: '', role: 'teknisi', password: '', photoURL: '', availabilityStatus: 'Available', workingDays: [], workingHours: '', skills: '', specialization: '', bio: '' });
+    setFormData({ name: '', nik: '', email: '', phone: '', telegramId: '', address: '', title: '', role: 'teknisi', password: '', photoURL: '', availabilityStatus: 'Available', workingDays: [], workingHours: '', skills: [], specialization: '', bio: '' });
+    setSkillInput('');
     setError(null);
     setUploading(false);
+  };
+
+  const addSkill = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      const skill = skillInput.trim().replace(/,$/, '');
+      if (skill && !formData.skills.includes(skill)) {
+        setFormData(prev => ({ ...prev, skills: [...prev.skills, skill] }));
+        setSkillInput('');
+      }
+    }
+  };
+
+  const removeSkill = (skillToRemove: string) => {
+    setFormData(prev => ({
+      ...prev,
+      skills: prev.skills.filter(s => s !== skillToRemove)
+    }));
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -864,15 +883,30 @@ export default function TechnicianList({ profile }: TechnicianListProps) {
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-1">Skills (Comma separated)</label>
-                  <input
-                    type="text"
-                    value={formData.skills}
-                    onChange={(e) => setFormData({ ...formData, skills: e.target.value })}
-                    className="w-full px-4 py-2 border border-black/10 rounded-xl focus:ring-2 focus:ring-emerald-500/20 outline-none"
-                    placeholder="Fiber Optic, ODP, Splitting, etc."
-                  />
-                  <p className="mt-1 text-[10px] text-neutral-400">Enter skills separated by commas to help with smart assignment.</p>
+                  <label className="block text-sm font-medium text-neutral-700 mb-1">Skills</label>
+                  <div className="p-2 border border-black/10 rounded-xl focus-within:ring-2 focus-within:ring-emerald-500/20 bg-white min-h-[42px] flex flex-wrap gap-2">
+                    {formData.skills.map(skill => (
+                      <span key={skill} className="flex items-center gap-1 px-2 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-lg border border-emerald-100">
+                        {skill}
+                        <button 
+                          type="button" 
+                          onClick={() => removeSkill(skill)}
+                          className="hover:text-emerald-900"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                    <input
+                      type="text"
+                      value={skillInput}
+                      onChange={(e) => setSkillInput(e.target.value)}
+                      onKeyDown={addSkill}
+                      className="flex-1 min-w-[120px] outline-none text-sm bg-transparent"
+                      placeholder={formData.skills.length === 0 ? "Type and press Enter or comma..." : ""}
+                    />
+                  </div>
+                  <p className="mt-1 text-[10px] text-neutral-400">Type a skill and press <span className="font-bold">Enter</span> or <span className="font-bold">comma</span> to add it.</p>
                 </div>
 
                 <div className="p-4 bg-neutral-50 rounded-2xl border border-black/5 space-y-4">

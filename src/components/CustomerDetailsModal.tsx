@@ -14,6 +14,8 @@ export default function CustomerDetailsModal({ customer, onClose }: CustomerDeta
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [activeTab, setActiveTab] = useState<'info' | 'tickets' | 'assets'>('info');
+  const [loadingTickets, setLoadingTickets] = useState(true);
+  const [loadingAssets, setLoadingAssets] = useState(true);
 
   useEffect(() => {
     // Fetch tickets for this customer
@@ -25,8 +27,10 @@ export default function CustomerDetailsModal({ customer, onClose }: CustomerDeta
 
     const unsubscribeTickets = onSnapshot(ticketsQuery, (snapshot) => {
       setTickets(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ticket)));
+      setLoadingTickets(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, `tickets?customerId=${customer.id}`);
+      setLoadingTickets(false);
     });
 
     // Fetch assets for this customer
@@ -37,8 +41,10 @@ export default function CustomerDetailsModal({ customer, onClose }: CustomerDeta
 
     const unsubscribeAssets = onSnapshot(assetsQuery, (snapshot) => {
       setAssets(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Asset)));
+      setLoadingAssets(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, `assets?customerId=${customer.id}`);
+      setLoadingAssets(false);
     });
 
     return () => {
@@ -84,9 +90,9 @@ export default function CustomerDetailsModal({ customer, onClose }: CustomerDeta
         {/* Tabs */}
         <div className="flex border-b border-black/5 px-6 bg-neutral-50">
           {[
-            { id: 'info', label: 'Basic Info', icon: MapPin },
-            { id: 'tickets', label: `Tickets (${tickets.length})`, icon: TicketIcon },
-            { id: 'assets', label: `Assets (${assets.length})`, icon: Box },
+            { id: 'info', label: 'Basic Details', icon: MapPin },
+            { id: 'tickets', label: `Ticket History (${tickets.length})`, icon: TicketIcon },
+            { id: 'assets', label: `Asset List (${assets.length})`, icon: Box },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -143,7 +149,7 @@ export default function CustomerDetailsModal({ customer, onClose }: CustomerDeta
                         <Box className="w-5 h-5 text-neutral-400" />
                         <div>
                           <p className="text-xs text-neutral-500">ODP Point</p>
-                          <p className="text-sm font-bold text-neutral-900">{customer.odp || 'Not assigned'}</p>
+                          <p className="text-sm font-bold text-neutral-900">{customer.odp || 'Not set'}</p>
                         </div>
                       </div>
                       <div className="flex items-start gap-3 p-3 bg-neutral-50 rounded-xl">
@@ -167,7 +173,13 @@ export default function CustomerDetailsModal({ customer, onClose }: CustomerDeta
                 exit={{ opacity: 0, x: 20 }}
                 className="space-y-4"
               >
-                {tickets.length > 0 ? (
+                {loadingTickets ? (
+                  <div className="space-y-4">
+                    {[1, 2].map(i => (
+                      <div key={i} className="h-32 bg-neutral-50 rounded-2xl animate-pulse" />
+                    ))}
+                  </div>
+                ) : tickets.length > 0 ? (
                   tickets.map((ticket) => (
                     <div key={ticket.id} className="p-4 bg-white border border-black/5 rounded-2xl hover:shadow-md transition-all">
                       <div className="flex items-start justify-between mb-3">
@@ -219,7 +231,13 @@ export default function CustomerDetailsModal({ customer, onClose }: CustomerDeta
                 exit={{ opacity: 0, x: 20 }}
                 className="grid grid-cols-1 md:grid-cols-2 gap-4"
               >
-                {assets.length > 0 ? (
+                {loadingAssets ? (
+                  <div className="col-span-full space-y-4">
+                    {[1, 2].map(i => (
+                      <div key={i} className="h-24 bg-neutral-50 rounded-2xl animate-pulse" />
+                    ))}
+                  </div>
+                ) : assets.length > 0 ? (
                   assets.map((asset) => (
                     <div key={asset.id} className="p-4 bg-white border border-black/5 rounded-2xl hover:shadow-md transition-all flex items-start gap-4">
                       <div className="w-10 h-10 bg-neutral-50 text-neutral-400 rounded-xl flex items-center justify-center shrink-0">

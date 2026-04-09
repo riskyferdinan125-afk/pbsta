@@ -1,6 +1,7 @@
 import React from 'react';
 import { Ticket, Customer, TicketStatus, TicketPriority, Technician } from '../types';
 import { stripHtml } from '../lib/textUtils';
+import { calculateSLAStatus, getSLARemainingTime } from '../lib/slaUtils';
 import { 
   Tag,
   Info,
@@ -190,14 +191,22 @@ export default function TicketRow({
       <td className="px-6 py-4">
         {(() => {
           const sla = getSLAStatus(ticket);
+          const remaining = getSLARemainingTime(ticket);
           return (
-            <div className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-tighter ${
-              sla === 'breached' ? 'text-rose-600' :
-              sla === 'near-breach' ? 'text-amber-600 animate-pulse' :
-              'text-emerald-600'
-            }`}>
-              <Clock className="w-3 h-3" />
-              {sla === 'breached' ? 'Breached' : sla === 'near-breach' ? 'Near Breach' : 'Within SLA'}
+            <div className="flex flex-col gap-0.5">
+              <div className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-tighter ${
+                sla === 'breached' ? 'text-rose-600' :
+                sla === 'near-breach' ? 'text-amber-600 animate-pulse' :
+                'text-emerald-600'
+              }`}>
+                <Clock className="w-3 h-3" />
+                {sla === 'breached' ? 'Breached' : sla === 'near-breach' ? 'Near Breach' : 'Within SLA'}
+              </div>
+              {remaining && (
+                <span className="text-[9px] text-neutral-400 font-medium ml-4.5">
+                  {remaining.hours}h {remaining.mins}m {remaining.isPast ? 'overdue' : 'left'}
+                </span>
+              )}
             </div>
           );
         })()}

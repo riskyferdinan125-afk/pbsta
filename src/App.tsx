@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { onAuthStateChanged, User, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs, updateDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs, updateDoc, onSnapshot, orderBy, limit } from 'firebase/firestore';
 import { auth, db, logout, testConnection } from './firebase';
 import { UserProfile } from './types';
 import { 
@@ -26,7 +26,8 @@ import {
   UserCircle,
   HelpCircle,
   Send,
-  Zap
+  Zap,
+  ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -60,6 +61,8 @@ type View = 'dashboard' | 'tickets' | 'assignments' | 'customers' | 'materials' 
 import { ToastProvider } from './components/Toast';
 import ErrorBoundary from './components/ErrorBoundary';
 
+import { useToast } from './components/Toast';
+
 export default function App() {
   return (
     <ErrorBoundary>
@@ -84,10 +87,12 @@ function AppContent() {
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [pendingTicketCustomer, setPendingTicketCustomer] = useState<string | null>(null);
+  const [pendingTicketId, setPendingTicketId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 1024);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const { showToast } = useToast();
 
   // Technician Location Tracking
   useEffect(() => {
@@ -128,10 +133,24 @@ function AppContent() {
     const q = query(
       collection(db, 'notifications'),
       where('userId', 'in', userIds),
-      where('read', '==', false)
+      orderBy('createdAt', 'desc')
     );
+    
+    let isInitial = true;
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setUnreadNotifications(snapshot.size);
+      setUnreadNotifications(snapshot.docs.filter(d => !d.data().read).length);
+      
+      if (isInitial) {
+        isInitial = false;
+        return;
+      }
+
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const notification = change.doc.data() as any;
+          showToast(`${notification.title}: ${notification.message}`, notification.type || 'info');
+        }
+      });
     }, (error) => {
       console.error("Notification listener error:", error);
     });
@@ -200,8 +219,8 @@ function AppContent() {
 
   const allNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['superadmin', 'admin', 'staf'] },
-    { id: 'tickets', label: 'Tickets', icon: TicketIcon, roles: ['superadmin', 'admin', 'staf', 'teknisi'] },
-    { id: 'customers', label: 'Customers', icon: Users, roles: ['superadmin', 'admin', 'staf'] },
+    { id: 'tickets', label: 'Tiket', icon: TicketIcon, roles: ['superadmin', 'admin', 'staf', 'teknisi'] },
+    { id: 'customers', label: 'Pelanggan', icon: Users, roles: ['superadmin', 'admin', 'staf'] },
     { id: 'materials', label: 'Materials', icon: Package, roles: ['superadmin', 'admin', 'staf', 'teknisi'] },
     { id: 'technicians', label: 'Technicians', icon: Wrench, roles: ['superadmin', 'admin', 'staf'] },
     { id: 'pekerjaan', label: 'BOQ REKONSILIASI', icon: Briefcase, roles: ['superadmin', 'admin', 'staf'] },
@@ -381,9 +400,22 @@ function AppContent() {
                 <Menu className="w-5 h-5" />
               </button>
             )}
-            <h2 className="text-base lg:text-lg font-semibold text-neutral-900 capitalize truncate">
-              {navItems.find(n => n.id === activeView)?.label}
-            </h2>
+            <div className="flex flex-col">
+              {activeView !== 'dashboard' && (
+                <div className="flex items-center gap-1 mb-0.5">
+                  <button 
+                    onClick={() => setActiveView('dashboard')}
+                    className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest hover:text-emerald-600 transition-colors"
+                  >
+                    Dashboard
+                  </button>
+                  <ChevronRight className="w-2.5 h-2.5 text-neutral-300" />
+                </div>
+              )}
+              <h2 className="text-base lg:text-lg font-semibold text-neutral-900 capitalize truncate leading-tight">
+                {navItems.find(n => n.id === activeView)?.label || activeView}
+              </h2>
+            </div>
           </div>
           <div className="flex items-center gap-4">
             {profile?.role === 'teknisi' && (
@@ -411,12 +443,22 @@ function AppContent() {
               exit={{ opacity: 0, x: -10 }}
               transition={{ duration: 0.2 }}
             >
-              {activeView === 'dashboard' && <Dashboard onNavigate={setActiveView} />}
+              {activeView === 'dashboard' && (
+                <Dashboard 
+                  onNavigate={setActiveView} 
+                  onOpenTicket={(ticketId) => {
+                    setPendingTicketId(ticketId);
+                    setActiveView('tickets');
+                  }}
+                />
+              )}
               {activeView === 'tickets' && (
                 <TicketList 
                   profile={profile}
                   initialCustomerId={pendingTicketCustomer} 
+                  initialTicketId={pendingTicketId}
                   onClearInitialCustomer={() => setPendingTicketCustomer(null)} 
+                  onClearInitialTicket={() => setPendingTicketId(null)}
                 />
               )}
               {activeView === 'customers' && (

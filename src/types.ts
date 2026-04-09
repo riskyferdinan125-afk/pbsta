@@ -27,6 +27,11 @@ export interface UserProfile {
     lng: number;
     updatedAt: Timestamp;
   };
+  notificationPreferences?: {
+    newTicket: boolean;
+    ticketUpdate: boolean;
+    newComment: boolean;
+  };
   createdAt?: any;
   updatedAt?: any;
 }
@@ -39,6 +44,10 @@ export interface Customer {
   address: string;
   odp: string;
   email?: string;
+  location?: {
+    lat: number;
+    lng: number;
+  };
   assets?: string[]; // IDs of assets owned by customer
 }
 
@@ -76,7 +85,7 @@ export interface Ticket {
   afterPhoto?: string;
   totalTimeSpent?: number; // in minutes
   isTimerRunning?: boolean;
-  timerStartedAt?: Timestamp;
+  timerStartedAt?: string; // ISO 8601 date-time string
   lastLocation?: {
     lat: number;
     lng: number;
@@ -305,6 +314,7 @@ export interface Project {
   totalMaterialCost?: number;
   totalJobCost?: number;
   totalCost?: number;
+  estimatedDuration?: number;
   photos?: string[]; // Deprecated, use evidence
   evidence?: ProjectEvidence[];
   materials?: ProjectMaterial[];

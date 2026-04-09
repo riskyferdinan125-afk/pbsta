@@ -149,6 +149,9 @@ export default function ProjectReport({ project, onClose }: ProjectReportProps) 
             <div className="font-bold uppercase">PELAKSANA</div>
             <div>: {project.partner || "-"}</div>
 
+            <div className="font-bold uppercase">EST. DURATION</div>
+            <div>: {project.estimatedDuration || 0} Days</div>
+
             {project.inseraTicketIds && project.inseraTicketIds.length > 0 && (
               <>
                 <div className="font-bold uppercase">TIKET INSERA</div>

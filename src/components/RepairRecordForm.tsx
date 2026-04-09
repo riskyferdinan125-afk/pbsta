@@ -441,21 +441,6 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
               <Wrench className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-neutral-900">Add Repair Record</h3>
-              <p className="text-xs text-neutral-500">Ticket ID: {ticketId}</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-2 hover:bg-neutral-200 rounded-lg transition-colors">
-            <X className="w-5 h-5 text-neutral-500" />
-          </button>
-        </div>
-
-        <div className="p-6 border-b border-black/5 flex items-center justify-between bg-neutral-50">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center">
-              <Wrench className="w-5 h-5" />
-            </div>
-            <div>
               <h3 className="text-xl font-bold text-neutral-900">Repair Record Wizard</h3>
               <p className="text-xs text-neutral-500">Step {currentStep + 1} of {formData.type === 'Physical' ? 5 : 4}</p>
             </div>
@@ -808,40 +793,40 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
               >
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-sm font-bold text-neutral-700">Penyebab Gangguan (Root Cause)</label>
+                    <label className="text-sm font-bold text-neutral-700">Root Cause</label>
                     <div className="bg-white border border-black/10 rounded-2xl overflow-hidden">
                       <ReactQuill
                         theme="snow"
                         value={formData.rootCause}
                         onChange={(content) => setFormData({ ...formData, rootCause: content })}
                         modules={quillModules}
-                        placeholder="Apa penyebab gangguannya?"
+                        placeholder="What caused the issue?"
                         className="bg-white"
                       />
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-bold text-neutral-700">Perbaikan Gangguan (Repair Action)</label>
+                    <label className="text-sm font-bold text-neutral-700">Repair Action</label>
                     <div className="bg-white border border-black/10 rounded-2xl overflow-hidden">
                       <ReactQuill
                         theme="snow"
                         value={formData.repairAction}
                         onChange={(content) => setFormData({ ...formData, repairAction: content })}
                         modules={quillModules}
-                        placeholder="Apa tindakan perbaikan yang dilakukan?"
+                        placeholder="What actions were taken to fix it?"
                         className="bg-white"
                       />
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-bold text-neutral-700">Notes (Optional)</label>
+                    <label className="text-sm font-bold text-neutral-700">Additional Notes (Optional)</label>
                     <div className="bg-white border border-black/10 rounded-2xl overflow-hidden">
                       <ReactQuill
                         theme="snow"
                         value={formData.notes}
                         onChange={(content) => setFormData({ ...formData, notes: content })}
                         modules={quillModules}
-                        placeholder="Catatan tambahan..."
+                        placeholder="Any other relevant information..."
                         className="bg-white"
                       />
                     </div>
@@ -982,7 +967,11 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
           {currentStep < (formData.type === 'Physical' ? 4 : 3) ? (
             <button
               type="button"
-              disabled={(currentStep === 0 && !formData.customerId) || (currentStep === 1 && !formData.type)}
+              disabled={
+                (currentStep === 0 && !formData.customerId) || 
+                (currentStep === 1 && (!formData.type || !formData.technicianId || !formData.startTime)) ||
+                (currentStep === 3 && (!formData.rootCause || formData.rootCause === '<p><br></p>' || !formData.repairAction || formData.repairAction === '<p><br></p>'))
+              }
               onClick={() => setCurrentStep(prev => prev + 1)}
               className="flex-[2] py-4 px-6 bg-neutral-900 text-white rounded-2xl font-bold hover:bg-neutral-800 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-xl shadow-neutral-900/10"
             >
@@ -991,7 +980,7 @@ export default function RepairRecordForm({ ticketId, onClose, onSuccess }: Repai
           ) : (
             <button
               onClick={handleSubmit}
-              disabled={isUploading || (formData.type === 'Physical' && !formData.evidencePhoto && !formData.afterPhoto)}
+              disabled={isUploading || (formData.type === 'Physical' && !formData.evidencePhoto && !formData.afterPhoto) || !formData.signature}
               className="flex-[2] py-4 px-6 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 disabled:opacity-50 transition-all shadow-xl shadow-emerald-600/20 flex items-center justify-center gap-2"
             >
               {isUploading ? (

@@ -214,6 +214,8 @@
         "photoURL": { "type": "string" },
         "telegramId": { "type": "string", "description": "Telegram Chat ID for bot integration" },
         "availabilityStatus": { "type": "string", "enum": ["Available", "Busy", "On Leave", "Offline"], "description": "Current availability status" },
+        "skills": { "type": "array", "items": { "type": "string" }, "description": "Technician skills" },
+        "specialization": { "type": "string", "description": "Main specialization" },
         "workingDays": { "type": "array", "items": { "type": "string" }, "description": "Working days of the week" },
         "workingHours": { "type": "string", "description": "Working hours" }
       },

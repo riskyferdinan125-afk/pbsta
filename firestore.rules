@@ -116,7 +116,7 @@ service cloud.firestore {
              (!('afterPhoto' in data) || data.afterPhoto is string || data.afterPhoto == null) &&
              (!('totalTimeSpent' in data) || data.totalTimeSpent is int || data.totalTimeSpent == null) &&
              (!('isTimerRunning' in data) || data.isTimerRunning is bool || data.isTimerRunning == null) &&
-             (!('timerStartedAt' in data) || data.timerStartedAt is timestamp || data.timerStartedAt == null) &&
+             (!('timerStartedAt' in data) || data.timerStartedAt is timestamp || data.timerStartedAt is string || data.timerStartedAt == null) &&
              (!('lastLocation' in data) || (data.lastLocation is map || data.lastLocation == null)) &&
              (!('assetId' in data) || data.assetId is string || data.assetId == null) &&
              (!('assignedAt' in data) || data.assignedAt is timestamp || data.assignedAt == null) &&
@@ -284,6 +284,8 @@ service cloud.firestore {
              (!('telegramId' in data) || (data.telegramId is string || data.telegramId is number)) &&
              (!('password' in data) || (data.password is string)) &&
              (!('availabilityStatus' in data) || data.availabilityStatus in ['Available', 'Busy', 'On Leave', 'Offline']) &&
+             (!('skills' in data) || (data.skills is list)) &&
+             (!('specialization' in data) || data.specialization is string) &&
              (!('workingDays' in data) || (data.workingDays is list)) &&
              (!('workingHours' in data) || data.workingHours is string) &&
              (!('createdAt' in data) || data.createdAt is timestamp) &&

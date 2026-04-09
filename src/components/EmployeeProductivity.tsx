@@ -41,6 +41,8 @@ interface ProductivityStats {
   inProgressTickets: number;
   totalPoints: number;
   slaComplianceRate: number;
+  totalChecklistItems: number;
+  completedChecklistItems: number;
 }
 
 export default function EmployeeProductivity({ profile }: EmployeeProductivityProps) {
@@ -70,6 +72,21 @@ export default function EmployeeProductivity({ profile }: EmployeeProductivityPr
         const withinSLA = completed.filter(t => t.slaStatus === 'within-sla').length;
         const slaRate = completed.length > 0 ? (withinSLA / completed.length) * 100 : 0;
 
+        // Checklist Metrics
+        let totalChecklistItems = 0;
+        let completedByTech = 0;
+
+        techTickets.forEach(ticket => {
+          if (ticket.checklist) {
+            totalChecklistItems += ticket.checklist.length;
+            ticket.checklist.forEach(item => {
+              if (item.completed && (item.completedBy === tech.name || item.completedBy === tech.email)) {
+                completedByTech += 1;
+              }
+            });
+          }
+        });
+
         return {
           technicianId: tech.uid,
           technicianName: tech.name,
@@ -78,7 +95,9 @@ export default function EmployeeProductivity({ profile }: EmployeeProductivityPr
           avgRating: ratedCount > 0 ? totalRating / ratedCount : 0,
           inProgressTickets: inProgress.length,
           totalPoints: totalPoints,
-          slaComplianceRate: slaRate
+          slaComplianceRate: slaRate,
+          totalChecklistItems: totalChecklistItems,
+          completedChecklistItems: completedByTech
         };
       });
 
@@ -236,22 +255,22 @@ export default function EmployeeProductivity({ profile }: EmployeeProductivityPr
 
         <div className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm">
           <div className="flex items-center gap-4 mb-4">
-            <div className="p-3 bg-emerald-50 rounded-2xl">
-              <ShieldCheck className="w-6 h-6 text-emerald-600" />
+            <div className="p-3 bg-indigo-50 rounded-2xl">
+              <ShieldCheck className="w-6 h-6 text-indigo-600" />
             </div>
             <div>
-              <p className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Kepatuhan SLA</p>
+              <p className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Penyelesaian Checklist</p>
               <p className="text-2xl font-black text-neutral-900">
                 {(() => {
-                  const total = stats.reduce((sum, s) => sum + s.slaComplianceRate, 0);
-                  const count = stats.filter(s => s.completedTickets > 0).length;
-                  return count > 0 ? Math.round(total / count) : 0;
+                  const total = stats.reduce((sum, s) => sum + s.totalChecklistItems, 0);
+                  const completed = stats.reduce((sum, s) => sum + s.completedChecklistItems, 0);
+                  return total > 0 ? Math.round((completed / total) * 100) : 0;
                 })()}%
               </p>
             </div>
           </div>
           <div className="text-xs text-neutral-500 font-medium">
-            Tiket dalam batas waktu
+            Rata-rata item checklist selesai
           </div>
         </div>
       </div>
@@ -275,6 +294,13 @@ export default function EmployeeProductivity({ profile }: EmployeeProductivityPr
               <Legend verticalAlign="top" height={36} />
               <Bar dataKey="completedTickets" name="Tiket Selesai" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
               <Bar dataKey="slaComplianceRate" name="Kepatuhan SLA (%)" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={20} />
+              <Bar 
+                dataKey={(data) => data.totalChecklistItems > 0 ? Math.round((data.completedChecklistItems / data.totalChecklistItems) * 100) : 0} 
+                name="Checklist Selesai (%)" 
+                fill="#8b5cf6" 
+                radius={[4, 4, 0, 0]} 
+                barSize={20} 
+              />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -349,6 +375,13 @@ export default function EmployeeProductivity({ profile }: EmployeeProductivityPr
                     {sortBy === 'slaComplianceRate' && (sortOrder === 'asc' ? <TrendingUp className="w-3 h-3 rotate-180" /> : <TrendingUp className="w-3 h-3" />)}
                   </div>
                 </th>
+                <th 
+                  className="px-6 py-4 text-xs font-bold text-neutral-500 uppercase tracking-wider text-center"
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    Checklist
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black/5">
@@ -396,6 +429,19 @@ export default function EmployeeProductivity({ profile }: EmployeeProductivityPr
                   <td className="px-6 py-4 text-center">
                     <div className={`font-bold ${row.slaComplianceRate >= 90 ? 'text-emerald-600' : row.slaComplianceRate >= 70 ? 'text-amber-600' : 'text-rose-600'}`}>
                       {Math.round(row.slaComplianceRate)}%
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <div className="flex flex-col items-center gap-1">
+                      <div className="w-full max-w-[80px] h-1.5 bg-neutral-100 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-indigo-500 transition-all"
+                          style={{ width: `${row.totalChecklistItems > 0 ? (row.completedChecklistItems / row.totalChecklistItems) * 100 : 0}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] font-bold text-neutral-500">
+                        {row.completedChecklistItems}/{row.totalChecklistItems}
+                      </span>
                     </div>
                   </td>
                 </motion.tr>

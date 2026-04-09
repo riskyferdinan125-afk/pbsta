@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, updateDoc, doc, deleteDoc, query, orderBy, setDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { UserProfile } from '../types';
-import { Search, UserCog, Mail, Shield, Edit2, Trash2, X, UserCircle, CheckCircle2, AlertCircle, Lock, UserPlus, Eye, Fingerprint } from 'lucide-react';
+import { Search, UserCog, Mail, Shield, Edit2, Trash2, X, UserCircle, CheckCircle2, AlertCircle, Lock, UserPlus, Eye, Fingerprint, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ConfirmationModal from './ConfirmationModal';
 import { useToast } from './Toast';
@@ -39,8 +39,12 @@ export default function UserManagement({ profile }: UserManagementProps) {
     email: '',
     nik: '',
     role: 'staf' as UserProfile['role'],
-    password: ''
+    password: '',
+    skills: [] as string[],
+    specialization: ''
   });
+
+  const [skillInput, setSkillInput] = useState('');
 
   const ROLES: UserProfile['role'][] = ['superadmin', 'admin', 'staf', 'teknisi'];
 
@@ -133,6 +137,8 @@ export default function UserManagement({ profile }: UserManagementProps) {
         nik: formData.nik,
         role: formData.role,
         password: formData.password, // Store for reference as requested
+        skills: formData.skills,
+        specialization: formData.specialization,
         createdAt: new Date(),
         updatedAt: new Date(),
         photoURL: null,
@@ -181,6 +187,8 @@ export default function UserManagement({ profile }: UserManagementProps) {
         nik: formData.nik,
         role: formData.role,
         password: formData.password,
+        skills: formData.skills,
+        specialization: formData.specialization,
         updatedAt: new Date()
       });
       showToast('User updated successfully', 'success');
@@ -214,8 +222,11 @@ export default function UserManagement({ profile }: UserManagementProps) {
       email: user.email,
       nik: user.nik || '',
       role: user.role,
-      password: user.password || ''
+      password: user.password || '',
+      skills: user.skills || [],
+      specialization: user.specialization || ''
     });
+    setSkillInput('');
     setIsModalOpen(true);
   };
 
@@ -227,24 +238,65 @@ export default function UserManagement({ profile }: UserManagementProps) {
     setViewingUser(null);
   };
 
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setEditingUser(null);
-  };
-
   const openAddModal = () => {
     setFormData({
       name: '',
       email: '',
       nik: '',
       role: 'staf',
-      password: ''
+      password: '',
+      skills: [],
+      specialization: ''
     });
+    setSkillInput('');
     setIsAddModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingUser(null);
+    setFormData({
+      name: '',
+      email: '',
+      nik: '',
+      role: 'staf',
+      password: '',
+      skills: [],
+      specialization: ''
+    });
+    setSkillInput('');
   };
 
   const closeAddModal = () => {
     setIsAddModalOpen(false);
+    setFormData({
+      name: '',
+      email: '',
+      nik: '',
+      role: 'staf',
+      password: '',
+      skills: [],
+      specialization: ''
+    });
+    setSkillInput('');
+  };
+
+  const addSkill = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      const skill = skillInput.trim().replace(/,$/, '');
+      if (skill && !formData.skills.includes(skill)) {
+        setFormData(prev => ({ ...prev, skills: [...prev.skills, skill] }));
+        setSkillInput('');
+      }
+    }
+  };
+
+  const removeSkill = (skillToRemove: string) => {
+    setFormData(prev => ({
+      ...prev,
+      skills: prev.skills.filter(s => s !== skillToRemove)
+    }));
   };
 
   const filteredUsers = users.filter(u => {
@@ -506,6 +558,51 @@ export default function UserManagement({ profile }: UserManagementProps) {
                   </div>
                 </div>
 
+                {formData.role === 'teknisi' && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-bold text-neutral-700 mb-2 uppercase tracking-wider">Specialization</label>
+                      <div className="relative">
+                        <Zap className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+                        <input
+                          type="text"
+                          value={formData.specialization}
+                          onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
+                          className="w-full pl-10 pr-4 py-3 bg-neutral-50 border border-neutral-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                          placeholder="e.g. Fiber Optic, SQM"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-bold text-neutral-700 mb-2 uppercase tracking-wider">Skills</label>
+                      <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-xl focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-emerald-500 outline-none transition-all flex flex-wrap gap-2">
+                        {formData.skills.map(skill => (
+                          <span key={skill} className="flex items-center gap-1 px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg border border-emerald-200">
+                            {skill}
+                            <button 
+                              type="button" 
+                              onClick={() => removeSkill(skill)}
+                              className="hover:text-emerald-900"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))}
+                        <input
+                          type="text"
+                          value={skillInput}
+                          onChange={(e) => setSkillInput(e.target.value)}
+                          onKeyDown={addSkill}
+                          className="flex-1 min-w-[120px] outline-none text-sm bg-transparent"
+                          placeholder={formData.skills.length === 0 ? "Type and press Enter or comma..." : ""}
+                        />
+                      </div>
+                      <p className="mt-1 text-[10px] text-neutral-400 italic">Type a skill and press Enter or comma to add it.</p>
+                    </div>
+                  </>
+                )}
+
                 <div className="flex gap-3 pt-4">
                   <button
                     type="button"
@@ -624,6 +721,51 @@ export default function UserManagement({ profile }: UserManagementProps) {
                   </div>
                 </div>
 
+                {formData.role === 'teknisi' && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-bold text-neutral-700 mb-2 uppercase tracking-wider">Specialization</label>
+                      <div className="relative">
+                        <Zap className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+                        <input
+                          type="text"
+                          value={formData.specialization}
+                          onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
+                          className="w-full pl-10 pr-4 py-3 bg-neutral-50 border border-neutral-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                          placeholder="e.g. Fiber Optic, SQM"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-bold text-neutral-700 mb-2 uppercase tracking-wider">Skills</label>
+                      <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-xl focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-emerald-500 outline-none transition-all flex flex-wrap gap-2">
+                        {formData.skills.map(skill => (
+                          <span key={skill} className="flex items-center gap-1 px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg border border-emerald-200">
+                            {skill}
+                            <button 
+                              type="button" 
+                              onClick={() => removeSkill(skill)}
+                              className="hover:text-emerald-900"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))}
+                        <input
+                          type="text"
+                          value={skillInput}
+                          onChange={(e) => setSkillInput(e.target.value)}
+                          onKeyDown={addSkill}
+                          className="flex-1 min-w-[120px] outline-none text-sm bg-transparent"
+                          placeholder={formData.skills.length === 0 ? "Type and press Enter or comma..." : ""}
+                        />
+                      </div>
+                      <p className="mt-1 text-[10px] text-neutral-400 italic">Type a skill and press Enter or comma to add it.</p>
+                    </div>
+                  </>
+                )}
+
                 <div className="flex gap-3 pt-4">
                   <button
                     type="button"
@@ -716,6 +858,29 @@ export default function UserManagement({ profile }: UserManagementProps) {
                       <div className="flex items-center gap-2 text-neutral-900 font-medium">
                         <Shield className="w-4 h-4 text-emerald-500" />
                         {viewingUser.telegramId}
+                      </div>
+                    </div>
+                  )}
+
+                  {viewingUser.specialization && (
+                    <div className="p-4 bg-neutral-50 rounded-xl border border-black/5">
+                      <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-1">Specialization</p>
+                      <div className="flex items-center gap-2 text-neutral-900 font-medium">
+                        <Zap className="w-4 h-4 text-emerald-500" />
+                        {viewingUser.specialization}
+                      </div>
+                    </div>
+                  )}
+
+                  {viewingUser.skills && viewingUser.skills.length > 0 && (
+                    <div className="p-4 bg-neutral-50 rounded-xl border border-black/5">
+                      <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-1">Skills</p>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {viewingUser.skills.map(skill => (
+                          <span key={skill} className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-md border border-emerald-200">
+                            {skill}
+                          </span>
+                        ))}
                       </div>
                     </div>
                   )}

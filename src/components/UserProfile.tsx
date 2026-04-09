@@ -23,6 +23,8 @@ export default function UserProfile({ profile, onNavigate }: Props) {
   const [telegramId, setTelegramId] = useState(profile?.telegramId || '');
   const [specialization, setSpecialization] = useState(profile?.specialization || '');
   const [skills, setSkills] = useState(profile?.skills?.join(', ') || '');
+  const [workingDays, setWorkingDays] = useState<string[]>(profile?.workingDays || []);
+  const [workingHours, setWorkingHours] = useState(profile?.workingHours || '');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [savingSkills, setSavingSkills] = useState(false);
@@ -37,9 +39,33 @@ export default function UserProfile({ profile, onNavigate }: Props) {
   const [passwordSuccess, setPasswordSuccess] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
 
+  const [notifPrefs, setNotifPrefs] = useState(profile?.notificationPreferences || {
+    newTicket: true,
+    ticketUpdate: true,
+    newComment: true
+  });
+  const [savingNotif, setSavingNotif] = useState(false);
+  const [savedNotif, setSavedNotif] = useState(false);
+
   const isPasswordUser = auth.currentUser?.providerData.some(p => p.providerId === 'password');
 
   if (!profile) return null;
+
+  const handleSaveNotifPrefs = async () => {
+    if (!profile.uid) return;
+    setSavingNotif(true);
+    try {
+      await updateDoc(doc(db, 'users', profile.uid), {
+        notificationPreferences: notifPrefs
+      });
+      setSavedNotif(true);
+      setTimeout(() => setSavedNotif(false), 3000);
+    } catch (error) {
+      console.error("Error saving notification preferences:", error);
+    } finally {
+      setSavingNotif(false);
+    }
+  };
 
   const handleSaveTelegram = async () => {
     if (!profile.uid) return;
@@ -57,19 +83,21 @@ export default function UserProfile({ profile, onNavigate }: Props) {
     }
   };
 
-  const handleSaveSkills = async () => {
+  const handleSaveProfessionalProfile = async () => {
     if (!profile.uid) return;
     setSavingSkills(true);
     try {
       const skillsArray = skills.split(',').map(s => s.trim()).filter(Boolean);
       await updateDoc(doc(db, 'users', profile.uid), {
         specialization,
-        skills: skillsArray
+        skills: skillsArray,
+        workingDays,
+        workingHours
       });
       setSavedSkills(true);
       setTimeout(() => setSavedSkills(false), 3000);
     } catch (error) {
-      console.error("Error saving skills:", error);
+      console.error("Error saving professional profile:", error);
     } finally {
       setSavingSkills(false);
     }
@@ -233,11 +261,47 @@ export default function UserProfile({ profile, onNavigate }: Props) {
                   className="w-full px-4 py-3 bg-neutral-50 border border-black/5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all"
                 />
               </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Working Hours</label>
+                <input 
+                  type="text" 
+                  value={workingHours}
+                  onChange={(e) => setWorkingHours(e.target.value)}
+                  placeholder="e.g. 08:00 - 17:00"
+                  className="w-full px-4 py-3 bg-neutral-50 border border-black/5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                />
+                <p className="text-[10px] text-neutral-400 italic">Specify your daily shift or availability hours.</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Working Days</label>
+                <div className="flex flex-wrap gap-2">
+                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() => {
+                        setWorkingDays(prev => 
+                          prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
+                        );
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                        workingDays.includes(day)
+                          ? 'bg-emerald-600 border-emerald-600 text-white shadow-md'
+                          : 'bg-neutral-50 border-black/5 text-neutral-500 hover:border-emerald-600'
+                      }`}
+                    >
+                      {day}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="flex justify-end pt-2">
               <button 
-                onClick={handleSaveSkills}
+                onClick={handleSaveProfessionalProfile}
                 disabled={savingSkills}
                 className="px-8 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-all disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-emerald-600/20"
               >
@@ -246,6 +310,70 @@ export default function UserProfile({ profile, onNavigate }: Props) {
             </div>
           </motion.div>
         )}
+
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white p-8 rounded-3xl border border-black/5 shadow-sm space-y-6 md:col-span-2"
+        >
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-3 bg-indigo-100 text-indigo-600 rounded-2xl">
+              <Bell className="w-6 h-6" />
+            </div>
+            <h3 className="text-xl font-bold text-neutral-900">Notification Preferences</h3>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="flex items-center justify-between p-4 bg-neutral-50 rounded-2xl border border-black/5">
+              <div>
+                <p className="text-sm font-bold text-neutral-900">New Tickets</p>
+                <p className="text-[10px] text-neutral-500">When assigned to a new ticket</p>
+              </div>
+              <button 
+                onClick={() => setNotifPrefs(prev => ({ ...prev, newTicket: !prev.newTicket }))}
+                className={`w-12 h-6 rounded-full transition-all relative ${notifPrefs.newTicket ? 'bg-emerald-500' : 'bg-neutral-300'}`}
+              >
+                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${notifPrefs.newTicket ? 'left-7' : 'left-1'}`} />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-neutral-50 rounded-2xl border border-black/5">
+              <div>
+                <p className="text-sm font-bold text-neutral-900">Ticket Updates</p>
+                <p className="text-[10px] text-neutral-500">Status, priority, or detail changes</p>
+              </div>
+              <button 
+                onClick={() => setNotifPrefs(prev => ({ ...prev, ticketUpdate: !prev.ticketUpdate }))}
+                className={`w-12 h-6 rounded-full transition-all relative ${notifPrefs.ticketUpdate ? 'bg-emerald-500' : 'bg-neutral-300'}`}
+              >
+                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${notifPrefs.ticketUpdate ? 'left-7' : 'left-1'}`} />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-neutral-50 rounded-2xl border border-black/5">
+              <div>
+                <p className="text-sm font-bold text-neutral-900">New Comments</p>
+                <p className="text-[10px] text-neutral-500">When someone adds a note</p>
+              </div>
+              <button 
+                onClick={() => setNotifPrefs(prev => ({ ...prev, newComment: !prev.newComment }))}
+                className={`w-12 h-6 rounded-full transition-all relative ${notifPrefs.newComment ? 'bg-emerald-500' : 'bg-neutral-300'}`}
+              >
+                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${notifPrefs.newComment ? 'left-7' : 'left-1'}`} />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <button 
+              onClick={handleSaveNotifPrefs}
+              disabled={savingNotif}
+              className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-indigo-600/20"
+            >
+              {savedNotif ? <CheckCircle2 className="w-4 h-4" /> : 'Save Preferences'}
+            </button>
+          </div>
+        </motion.div>
 
         <motion.div 
           initial={{ opacity: 0, x: 20 }}
