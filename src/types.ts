@@ -291,6 +291,90 @@ export interface Report {
   createdAt: Timestamp;
 }
 
+export interface ProjectComment {
+  id: string;
+  text: string;
+  createdBy: string;
+  createdAt: Timestamp;
+}
+
+export interface ProjectHistory {
+  id: string;
+  type: 'status_change' | 'boq_update' | 'technician_change' | 'milestone_update' | 'document_added' | 'created';
+  fromValue?: string | number | boolean;
+  toValue: string | number | boolean;
+  changedBy: string;
+  timestamp: Timestamp;
+  description?: string;
+}
+
+export interface ProjectMilestone {
+  id: string;
+  title: string;
+  status: 'pending' | 'completed';
+  dueDate?: Timestamp;
+  completedAt?: Timestamp;
+}
+
+export interface ProjectDocument {
+  id: string;
+  name: string;
+  url: string;
+  type: string;
+  uploadedBy: string;
+  uploadedAt: Timestamp;
+}
+
+export interface ProjectBOQVersion {
+  version: number;
+  totalCost: number;
+  jobs: ProjectJob[];
+  materials: ProjectMaterial[];
+  timestamp: Timestamp;
+  changedBy: string;
+}
+
+export interface ProjectTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  defaultJobs: ProjectJob[];
+  defaultMaterials: ProjectMaterial[];
+  defaultMilestones: string[];
+  createdAt: Timestamp;
+}
+
+export interface ProjectCheckIn {
+  id: string;
+  userId: string;
+  userName: string;
+  timestamp: Timestamp;
+  location: {
+    lat: number;
+    lng: number;
+  };
+  distanceFromProject: number; // in meters
+  type: 'check-in' | 'check-out';
+  photoUrl?: string;
+}
+
+export interface ProjectSignature {
+  id: string;
+  role: 'technician' | 'partner' | 'supervisor';
+  name: string;
+  signatureUrl: string;
+  timestamp: Timestamp;
+}
+
+export interface ProjectHealth {
+  score: number; // 0-100
+  status: 'healthy' | 'warning' | 'critical';
+  analysis: string;
+  recommendations: string[];
+  lastChecked: Timestamp;
+}
+
 export interface Project {
   id: string;
   pid: string;
@@ -302,7 +386,9 @@ export interface Project {
   partner?: string;
   description: string;
   location?: string;
-  status: 'open' | 'in-progress' | 'completed';
+  latitude?: number;
+  longitude?: number;
+  status: 'open' | 'in-progress' | 'completed' | 'closed';
   boqRekon?: string;
   tiketGamas?: string;
   baPendukungUrl?: string;
@@ -319,7 +405,21 @@ export interface Project {
   evidence?: ProjectEvidence[];
   materials?: ProjectMaterial[];
   jobs?: ProjectJob[];
-  technicianId?: string;
+  technicianId?: string; // Primary technician
+  assignedTechnicianIds?: string[]; // Multiple technicians
+  milestones?: ProjectMilestone[];
+  comments?: ProjectComment[];
+  history?: ProjectHistory[];
+  documents?: ProjectDocument[];
+  boqVersions?: ProjectBOQVersion[];
+  checkIns?: ProjectCheckIn[];
+  signatures?: ProjectSignature[];
+  health?: ProjectHealth;
+  templateId?: string;
+  actualCost?: number;
+  budget?: number;
+  startDate?: Timestamp;
+  endDate?: Timestamp;
   createdAt: Timestamp;
   updatedAt?: Timestamp;
 }

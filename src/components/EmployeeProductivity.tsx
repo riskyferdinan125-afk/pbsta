@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, getDocs, where } from 'firebase/firestore';
+import { collection, query, onSnapshot, getDocs, where, orderBy, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Ticket, Technician, UserProfile } from '../types';
+import { Ticket, Technician, UserProfile, RepairRecord } from '../types';
 import { 
   Users, 
   CheckCircle2, 
@@ -13,9 +13,17 @@ import {
   BarChart3,
   Activity,
   Briefcase,
-  ShieldCheck
+  ShieldCheck,
+  Download,
+  Calendar,
+  ChevronRight,
+  X,
+  FileText,
+  History,
+  Wrench,
+  Package
 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   BarChart, 
   Bar, 
@@ -27,6 +35,13 @@ import {
   Legend,
   Cell
 } from 'recharts';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
+import { UserOptions } from 'jspdf-autotable';
+
+interface jsPDFWithAutoTable extends jsPDF {
+  autoTable: (options: UserOptions) => jsPDF;
+}
 
 interface EmployeeProductivityProps {
   profile?: UserProfile | null;
@@ -47,14 +62,18 @@ interface ProductivityStats {
 
 export default function EmployeeProductivity({ profile }: EmployeeProductivityProps) {
   const [stats, setStats] = useState<ProductivityStats[]>([]);
+  const [repairRecords, setRepairRecords] = useState<RepairRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<keyof ProductivityStats>('completedTickets');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [selectedTechId, setSelectedTechId] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     let tickets: Ticket[] = [];
     let technicians: UserProfile[] = [];
+    let records: RepairRecord[] = [];
 
     const updateStats = () => {
       if (technicians.length === 0) return;
@@ -116,11 +135,50 @@ export default function EmployeeProductivity({ profile }: EmployeeProductivityPr
       updateStats();
     });
 
+    const unsubscribeRecords = onSnapshot(query(collection(db, 'repairRecords'), orderBy('createdAt', 'desc')), (snapshot) => {
+      records = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RepairRecord));
+      setRepairRecords(records);
+    });
+
     return () => {
       unsubscribeTickets();
       unsubscribeTechs();
+      unsubscribeRecords();
     };
   }, []);
+
+  const handleExportPDF = () => {
+    const doc = new jsPDF() as jsPDFWithAutoTable;
+    const dateStr = new Date().toLocaleDateString('id-ID');
+    
+    doc.setFontSize(20);
+    doc.setTextColor(16, 185, 129);
+    doc.text("Laporan Produktivitas Petugas", 14, 20);
+    
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Dicetak pada: ${dateStr}`, 14, 28);
+    
+    const tableData = sortedStats.map(s => [
+      s.technicianName,
+      s.completedTickets.toString(),
+      s.inProgressTickets.toString(),
+      `${Math.round(s.avgCompletionTime)}m`,
+      s.avgRating.toFixed(1),
+      s.totalPoints.toString(),
+      `${Math.round(s.slaComplianceRate)}%`
+    ]);
+
+    doc.autoTable({
+      startY: 35,
+      head: [["Petugas", "Selesai", "Proses", "Rata Waktu", "Rating", "Poin", "SLA %"]],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [16, 185, 129] }
+    });
+
+    doc.save(`Laporan_Produktivitas_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
 
   const sortedStats = [...stats]
     .filter(s => s.technicianName.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -170,6 +228,13 @@ export default function EmployeeProductivity({ profile }: EmployeeProductivityPr
               className="pl-10 pr-4 py-2 bg-white border border-black/5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 w-64"
             />
           </div>
+          <button
+            onClick={handleExportPDF}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20"
+          >
+            <Download className="w-4 h-4" />
+            Ekspor PDF
+          </button>
         </div>
       </div>
 
@@ -389,14 +454,20 @@ export default function EmployeeProductivity({ profile }: EmployeeProductivityPr
                 <motion.tr 
                   layout
                   key={row.technicianId}
-                  className="hover:bg-neutral-50/50 transition-colors group"
+                  className="hover:bg-neutral-50/50 transition-colors group cursor-pointer"
+                  onClick={() => setSelectedTechId(row.technicianId)}
                 >
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-xs">
                         {row.technicianName.charAt(0)}
                       </div>
-                      <span className="font-bold text-neutral-900">{row.technicianName}</span>
+                      <div className="flex flex-col">
+                        <span className="font-bold text-neutral-900">{row.technicianName}</span>
+                        <span className="text-[10px] text-neutral-400 flex items-center gap-1">
+                          Klik untuk detail <ChevronRight className="w-2.5 h-2.5" />
+                        </span>
+                      </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-center">
@@ -450,6 +521,110 @@ export default function EmployeeProductivity({ profile }: EmployeeProductivityPr
           </table>
         </div>
       </div>
+
+      {/* Detailed Logs Modal */}
+      <AnimatePresence>
+        {selectedTechId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden max-h-[90vh] flex flex-col"
+            >
+              <div className="p-6 border-b border-black/5 flex items-center justify-between bg-neutral-50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center">
+                    <History className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-neutral-900">
+                      Log Aktivitas: {stats.find(s => s.technicianId === selectedTechId)?.technicianName}
+                    </h3>
+                    <p className="text-xs text-neutral-500">Riwayat perbaikan dan waktu kerja</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setSelectedTechId(null)}
+                  className="p-2 hover:bg-neutral-200 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-neutral-500" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6">
+                <div className="space-y-4">
+                  {repairRecords.filter(r => r.technicianId === selectedTechId).length > 0 ? (
+                    <div className="grid grid-cols-1 gap-4">
+                      {repairRecords
+                        .filter(r => r.technicianId === selectedTechId)
+                        .map((record) => (
+                          <div key={record.id} className="p-4 bg-neutral-50 rounded-2xl border border-black/5 hover:border-emerald-200 transition-all group">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                              <div className="flex items-start gap-4">
+                                <div className="p-3 bg-white rounded-xl border border-black/5 text-emerald-600">
+                                  <Wrench className="w-5 h-5" />
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-sm font-bold text-neutral-900">Tiket #{record.ticketId.slice(0, 8)}</span>
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                      record.type === 'Physical' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+                                    }`}>
+                                      {record.type}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-neutral-600 line-clamp-2 mb-2" dangerouslySetInnerHTML={{ __html: record.repairAction || 'Tidak ada deskripsi tindakan' }}></p>
+                                  <div className="flex flex-wrap gap-3">
+                                    <div className="flex items-center gap-1.5 text-[10px] text-neutral-500 font-medium">
+                                      <Calendar className="w-3 h-3" />
+                                      {record.createdAt?.toDate().toLocaleDateString('id-ID')}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-[10px] text-neutral-500 font-medium">
+                                      <Clock className="w-3 h-3" />
+                                      {record.startTime instanceof Timestamp ? record.startTime.toDate().toLocaleTimeString('id-ID') : 'N/A'} - {record.endTime instanceof Timestamp ? record.endTime.toDate().toLocaleTimeString('id-ID') : 'Selesai'}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex flex-col items-end gap-2">
+                                {record.endTime && record.startTime && (
+                                  <div className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-bold border border-emerald-100">
+                                    Durasi: {Math.round((record.endTime.toMillis() - record.startTime.toMillis()) / (1000 * 60))} menit
+                                  </div>
+                                )}
+                                {record.materialsUsed && record.materialsUsed.length > 0 && (
+                                  <div className="flex items-center gap-1 text-[10px] text-neutral-500">
+                                    <Package className="w-3 h-3" />
+                                    {record.materialsUsed.length} Material digunakan
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-12 text-neutral-400">
+                      <FileText className="w-12 h-12 mb-4 opacity-20" />
+                      <p className="text-sm font-medium">Belum ada log perbaikan untuk petugas ini</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-black/5 bg-neutral-50 flex justify-end">
+                <button 
+                  onClick={() => setSelectedTechId(null)}
+                  className="px-6 py-2 bg-neutral-900 text-white rounded-xl font-bold hover:bg-neutral-800 transition-all"
+                >
+                  Tutup
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

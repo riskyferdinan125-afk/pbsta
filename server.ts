@@ -406,8 +406,10 @@ async function initTelegramBot() {
         help += "`/pelanggan` - Tambah pelanggan baru (format teks)\n";
         help += "`/addtiket` - Buat tiket baru (format teks)\n";
         help += "`/addprojects` - Buat proyek baru (PID, Nama, Insera, Witel, Mitra, Lokasi)\n";
+        help += "`/boq` - Update material/designator proyek\n";
         help += "`/assign` - Assign tiket ke teknisi (format teks)\n";
-        help += "`/projects` - List proyek aktif untuk update progres\n\n";
+        help += "`/projects` - List proyek aktif untuk update progres\n";
+        help += "`/finish_proyek` - Selesaikan proyek dan generate laporan\n\n";
         
         const commandsRef = collection(db, 'telegramCommands');
         const q = query(commandsRef, where('isActive', '==', true));
@@ -842,7 +844,7 @@ async function initTelegramBot() {
           const projectData = projectSnap.data();
 
           const stages = [
-            { text: '📸 Sebelum', data: 'Sebelum' },
+            { text: '📸 Eviden Pra (Sebelum)', data: 'Sebelum' },
             { text: '⛏️ Penggalian', data: 'Penggalian' },
             { text: '🏗️ Tanam Tiang', data: 'Tanam tiang' },
             { text: '🧱 Pengecoran', data: 'Pengecoran' },
@@ -851,7 +853,7 @@ async function initTelegramBot() {
             { text: '🔌 Sambung Core', data: 'Penyambungan core' },
             { text: '📦 Pasang UC', data: 'Pemasangan UC' },
             { text: '🚀 Naik UC', data: 'Penaikan UC' },
-            { text: '✅ Sesudah', data: 'Sesudah' },
+            { text: '✅ Eviden Pasca (Sesudah)', data: 'Sesudah' },
             { text: '📏 Hasil Ukur', data: 'Hasil ukur' },
             { text: '📐 As Built Drawing', data: 'As built drawing' },
             { text: '📄 Berita Acara', data: 'Berita acara' },
@@ -892,6 +894,59 @@ async function initTelegramBot() {
           projectSessions.set(chatId, { ...session, stage });
           
           bot?.sendMessage(chatId, `📸 *Tahap: ${stage}*\n\nSilakan kirimkan *FOTO EVIDEN* untuk tahap ini.\n\n_Anda juga bisa menambahkan caption pada foto tersebut._`, { parse_mode: 'Markdown' });
+        }
+
+        // Project BOQ Selection
+        if (data.startsWith('prj_boq_')) {
+          const projectId = data.replace('prj_boq_', '');
+          projectSessions.set(chatId, { projectId, stage: 'waiting_boq_material' });
+          
+          const jobSnap = await getDocs(collection(db, 'jobs'));
+          const jobs = jobSnap.docs.map(doc => ({ id: doc.id, name: doc.data().name, designator: doc.data().designator }));
+          
+          const keyboard = [];
+          for (let i = 0; i < jobs.length; i += 2) {
+            const row = [{ text: `[${jobs[i].designator}] ${jobs[i].name}`, callback_data: `prj_job_${jobs[i].id}` }];
+            if (jobs[i+1]) row.push({ text: `[${jobs[i+1].designator}] ${jobs[i+1].name}`, callback_data: `prj_job_${jobs[i+1].id}` });
+            keyboard.push(row);
+          }
+
+          bot?.editMessageText("📦 *Pilih Designator (BOQ Rekon)*:", {
+            chat_id: chatId,
+            message_id: query.message?.message_id,
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: keyboard }
+          });
+        }
+
+        if (data.startsWith('prj_job_')) {
+          const jobId = data.replace('prj_job_', '');
+          const session = projectSessions.get(chatId);
+          if (!session) return;
+          
+          projectSessions.set(chatId, { ...session, jobId: jobId, stage: 'waiting_boq_quantity' });
+          bot?.sendMessage(chatId, "🔢 *Masukkan Jumlah (Quantity)*:");
+        }
+
+        // Project Finish
+        if (data.startsWith('prj_fin_')) {
+          const projectId = data.replace('prj_fin_', '');
+          const projectRef = doc(db, 'projects', projectId);
+          const projectSnap = await getDoc(projectRef);
+          
+          if (projectSnap.exists()) {
+            await updateDoc(projectRef, {
+              status: 'completed',
+              updatedAt: serverTimestamp()
+            });
+            
+            const projectData = projectSnap.data();
+            let msg = `✅ *Proyek Selesai!*\n\nProyek *${projectData.pid}* telah ditandai sebagai selesai.\n\n`;
+            msg += `📄 *Laporan PDF:* [Klik di sini untuk melihat](https://ais-dev-wql5xilj5h75lf6g33ins7-546624711957.asia-east1.run.app/report/${projectId})\n`;
+            msg += `✍️ *Tanda Tangan:* Silakan buka aplikasi untuk melengkapi tanda tangan digital.`;
+            
+            bot?.sendMessage(chatId, msg, { parse_mode: 'Markdown' });
+          }
         }
 
         // Ticket Creation Flow
@@ -1289,6 +1344,64 @@ async function initTelegramBot() {
       } catch (e: any) {
         console.error("Error in /material command:", e);
         bot.sendMessage(chatId, `❌ *Gagal mengambil data material!*\n\nError: ${e.message}`);
+      }
+    });
+
+    // /boq command
+    bot.onText(/^\/boq/i, async (msg) => {
+      const chatId = msg.chat.id;
+      try {
+        const userDoc = await getAuthorizedUser(chatId);
+        if (!userDoc) return;
+
+        const snap = await getDocs(collection(db, 'projects'));
+        const activeProjects = snap.docs.filter(doc => doc.data().status !== 'completed');
+
+        if (activeProjects.length === 0) {
+          bot.sendMessage(chatId, "📭 *Tidak ada proyek aktif* untuk update BOQ.");
+          return;
+        }
+
+        const keyboard = activeProjects.map(doc => ([{
+          text: `📦 ${doc.data().pid} - ${doc.data().description.slice(0, 20)}...`,
+          callback_data: `prj_boq_${doc.id}`
+        }]));
+
+        bot.sendMessage(chatId, "📦 *Update BOQ Proyek*\n\nSilakan pilih proyek:", {
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: keyboard }
+        });
+      } catch (e: any) {
+        bot.sendMessage(chatId, `❌ *Gagal:* ${e.message}`);
+      }
+    });
+
+    // /finish_proyek command
+    bot.onText(/^\/finish_proyek/i, async (msg) => {
+      const chatId = msg.chat.id;
+      try {
+        const userDoc = await getAuthorizedUser(chatId);
+        if (!userDoc) return;
+
+        const snap = await getDocs(collection(db, 'projects'));
+        const activeProjects = snap.docs.filter(doc => doc.data().status !== 'completed');
+
+        if (activeProjects.length === 0) {
+          bot.sendMessage(chatId, "📭 *Tidak ada proyek aktif* untuk diselesaikan.");
+          return;
+        }
+
+        const keyboard = activeProjects.map(doc => ([{
+          text: `🏁 ${doc.data().pid} - ${doc.data().description.slice(0, 20)}...`,
+          callback_data: `prj_fin_${doc.id}`
+        }]));
+
+        bot.sendMessage(chatId, "🏁 *Selesaikan Proyek*\n\nSilakan pilih proyek yang telah selesai:", {
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: keyboard }
+        });
+      } catch (e: any) {
+        bot.sendMessage(chatId, `❌ *Gagal:* ${e.message}`);
       }
     });
 
@@ -1765,6 +1878,76 @@ async function initTelegramBot() {
       const chatId = msg.chat.id;
       const text = msg.text;
       if (!text) return;
+
+      // Handle project BOQ quantity
+      const projectSession = projectSessions.get(chatId);
+      if (projectSession && projectSession.stage === 'waiting_boq_quantity' && !text.startsWith('/')) {
+        const qty = parseInt(text.trim());
+        if (isNaN(qty) || qty <= 0) {
+          bot.sendMessage(chatId, "⚠️ *Jumlah tidak valid!* Masukkan angka positif:");
+          return;
+        }
+
+        try {
+          const projectRef = doc(db, 'projects', projectSession.projectId!);
+          const projectSnap = await getDoc(projectRef);
+          const jobRef = doc(db, 'jobs', projectSession.jobId!);
+          const jobSnap = await getDoc(jobRef);
+          
+          if (projectSnap.exists() && jobSnap.exists()) {
+            const projectData = projectSnap.data();
+            const jobData = jobSnap.data();
+            const jobs = projectData.jobs || [];
+            
+            // Check if job already in BOQ
+            const existingIndex = jobs.findIndex((item: any) => item.jobId === projectSession.jobId);
+            if (existingIndex > -1) {
+              const newQty = (jobs[existingIndex].quantity || 0) + qty;
+              jobs[existingIndex].quantity = newQty;
+              jobs[existingIndex].materialSubtotal = newQty * (jobData.materialPrice || 0);
+              jobs[existingIndex].serviceSubtotal = newQty * (jobData.servicePrice || 0);
+              jobs[existingIndex].subtotal = newQty * (jobData.price || 0);
+            } else {
+              jobs.push({
+                jobId: projectSession.jobId,
+                designator: jobData.designator,
+                name: jobData.name,
+                quantity: qty,
+                materialPrice: jobData.materialPrice || 0,
+                servicePrice: jobData.servicePrice || 0,
+                price: jobData.price || 0,
+                materialSubtotal: qty * (jobData.materialPrice || 0),
+                serviceSubtotal: qty * (jobData.servicePrice || 0),
+                subtotal: qty * (jobData.price || 0)
+              });
+            }
+
+            const totalJobCost = jobs.reduce((sum: number, j: any) => sum + (j.subtotal || 0), 0);
+            const totalCost = (projectData.activityCost || 0) + totalJobCost;
+
+            await updateDoc(projectRef, {
+              jobs: jobs,
+              totalJobCost,
+              totalCost,
+              updatedAt: serverTimestamp()
+            });
+
+            bot.sendMessage(chatId, `✅ *BOQ Rekon Diperbarui!*\n\nDesignator: [${jobData.designator}] ${jobData.name}\nJumlah: ${qty}\nSubtotal: Rp ${(qty * jobData.price).toLocaleString()}`, {
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '➕ Tambah Designator Lagi', callback_data: `prj_boq_${projectSession.projectId}` }],
+                  [{ text: '✅ Selesai', callback_data: 'prj_finish' }]
+                ]
+              }
+            });
+            projectSessions.delete(chatId);
+          }
+        } catch (e) {
+          console.error("Error updating project BOQ:", e);
+        }
+        return;
+      }
 
       // Handle repair session (interactive flow)
       const repairSession = repairSessions.get(chatId);
